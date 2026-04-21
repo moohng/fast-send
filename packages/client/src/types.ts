@@ -6,6 +6,7 @@ export interface SharedItem {
   originalName?: string;
   size?: string;
   time: string;
+  fullTime: string;
   senderId: string;
   progress?: number;
 }

@@ -80,9 +80,15 @@ app.get('/api/items', (req: Request, res: Response) => res.json(db.getAll()));
 
 app.post('/api/text', (req: Request, res: Response) => {
     const { content, senderId } = req.body;
-    if (!content) return res.status(400).send();
-    const item = db.add({ type: 'text', content, senderId: String(senderId), time: new Date().toLocaleTimeString() });
-    io.emit('new-item', item);
+      if (!content) return res.status(400).send();
+      const item = db.add({ 
+        type: 'text', 
+        content, 
+        senderId: String(senderId), 
+        time: new Date().toLocaleTimeString(),
+        fullTime: new Date().toISOString()
+      });
+      io.emit('new-item', item);
     res.json(item);
 });
 
@@ -93,10 +99,11 @@ app.post('/api/upload', upload.single('file'), (req: Request, res: Response) => 
         type: 'file',
         filename: req.file.filename,
         originalName: req.file.originalname,
-        size: (req.file.size / 1024 / 1024).toFixed(2) + ' MB',
-        senderId: String(senderId),
-        time: new Date().toLocaleTimeString(),
-    });
+          size: (req.file.size / 1024 / 1024).toFixed(2) + ' MB',
+          senderId: String(senderId),
+          time: new Date().toLocaleTimeString(),
+          fullTime: new Date().toISOString()
+      });
     io.emit('new-item', item);
     res.json(item);
 });
