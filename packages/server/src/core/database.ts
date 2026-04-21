@@ -1,5 +1,6 @@
-﻿import * as fs from 'fs';
+import Database from 'better-sqlite3';
 import * as path from 'path';
+import * as fs from 'fs';
 
 /**
  * 共享项目的数据结构接口
@@ -16,7 +17,6 @@ export interface SharedItem {
 
 /**
  * 极简数据持久化工具 (JSON版)。
- * 临时替代 SQLite 以解决特定环境下的磁盘 IO 权限错误。
  */
 class DataStore {
     private items: SharedItem[];
@@ -56,6 +56,19 @@ class DataStore {
         if (this.items.length > 100) this.items.pop();
         this._save();
         return newItem;
+    }
+
+    /**
+     * 根据 ID 删除记录
+     */
+    public remove(id: number): boolean {
+        const initialLength = this.items.length;
+        this.items = this.items.filter(i => i.id !== id);
+        if (this.items.length !== initialLength) {
+            this._save();
+            return true;
+        }
+        return false;
     }
 
     public clear(): void {

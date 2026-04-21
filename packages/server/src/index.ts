@@ -7,9 +7,11 @@ import * as qrcodeTerminal from 'qrcode-terminal';
 import * as QRCode from 'qrcode';
 import multer from 'multer';
 import * as fs from 'fs';
+import * as os from 'os';
 
 import { getLocalIP } from './utils/network';
 import { db } from './core/database';
+import { discovery } from './core/discovery';
 
 const app = express();
 const server = http.createServer(app);
@@ -36,41 +38,60 @@ const storage = multer.diskStorage({
 });
 const upload = multer({ storage: storage });
 
+const activeDevices = new Map<string, { name: string, ip: string, lastSeen: number }>();
+
+io.on('connection', (socket) => {
+    const deviceId = socket.id;
+    const rawUA = socket.handshake.headers['user-agent'];
+    const userAgent = (Array.isArray(rawUA) ? rawUA[0] : (rawUA as string | undefined)) || 'Unknown Device';
+    
+    let deviceName = 'Web Device';
+    if (userAgent.includes('iPhone')) deviceName = 'iPhone';
+    else if (userAgent.includes('Android')) deviceName = 'Android';
+    else if (userAgent.includes('Windows')) deviceName = 'Windows PC';
+    else if (userAgent.includes('Macintosh')) deviceName = 'Mac';
+
+    activeDevices.set(deviceId, { 
+        name: deviceName, 
+        ip: socket.handshake.address,
+        lastSeen: Date.now() 
+    });
+
+    io.emit('devices-update', Array.from(activeDevices.values()));
+
+    socket.on('disconnect', () => {
+        activeDevices.delete(deviceId);
+        io.emit('devices-update', Array.from(activeDevices.values()));
+    });
+});
+
 // --- API ---
 
 app.get('/api/config', async (req: Request, res: Response) => {
     const localIP = getLocalIP();
-    const clientUrl = req.query.url as string;
-    
-    // 基础 URL
+    const rawUrl = req.query.url;
+    const clientUrl = typeof rawUrl === 'string' ? rawUrl : undefined;
     let finalUrl = clientUrl || `http://${localIP}:${PORT}`;
-    
-    // 关键修复：如果前端传来的是 localhost 或 127.0.0.1，自动替换为物理局域网 IP
-    // 这样即便你在电脑用 localhost 调试，生成的二维码也会指向局域网 IP，方便手机扫码
-    if (finalUrl.includes('localhost')) {
-        finalUrl = finalUrl.replace('localhost', localIP);
-    } else if (finalUrl.includes('127.0.0.1')) {
-        finalUrl = finalUrl.replace('127.0.0.1', localIP);
-    }
-    
+    if (finalUrl.indexOf('localhost') !== -1) finalUrl = finalUrl.replace('localhost', localIP);
+    else if (finalUrl.indexOf('127.0.0.1') !== -1) finalUrl = finalUrl.replace('127.0.0.1', localIP);
     const qrDataUrl = await QRCode.toDataURL(finalUrl);
     res.json({ ip: localIP, url: finalUrl, qr: qrDataUrl });
 });
 
-app.get('/api/items', (req: Request, res: Response) => {
-    res.json(db.getAll());
-});
+app.get('/api/items', (req: Request, res: Response) => res.json(db.getAll()));
 
 app.post('/api/text', (req: Request, res: Response) => {
-    const { content } = req.body;
+    const { content, senderId } = req.body;
     if (!content) return res.status(400).send({ error: 'Content required' });
     const itemData = { type: 'text' as const, content, time: new Date().toLocaleTimeString() };
     const item = db.add(itemData);
-    io.emit('new-item', item);
+    // 强制广播 senderId，确保前端能收到
+    io.emit('new-item', { ...item, senderId: String(senderId) });
     res.json(item);
 });
 
 app.post('/api/upload', upload.single('file'), (req: Request, res: Response) => {
+    const senderId = req.body.senderId;
     if (!req.file) return res.status(400).send({ error: 'File required' });
     const itemData = {
         type: 'file' as const,
@@ -80,8 +101,18 @@ app.post('/api/upload', upload.single('file'), (req: Request, res: Response) => 
         time: new Date().toLocaleTimeString(),
     };
     const item = db.add(itemData);
-    io.emit('new-item', item);
+    io.emit('new-item', { ...item, senderId: String(senderId) });
     res.json(item);
+});
+
+app.delete('/api/items/:id', (req: Request, res: Response) => {
+    const idParam = req.params.id;
+    if (typeof idParam !== 'string') return res.status(400).send();
+    const id = parseInt(idParam);
+    if (db.remove(id)) {
+        io.emit('item-removed', id);
+        res.json({ success: true });
+    } else res.status(404).json({ error: 'Not found' });
 });
 
 app.post('/api/clear', (req: Request, res: Response) => {
@@ -94,8 +125,9 @@ const localIP = getLocalIP();
 const displayUrl = `http://${localIP}:${PORT}`;
 server.listen(PORT, '0.0.0.0', () => {
     console.log(`\n=========================================`);
-    console.log(`🚀 FastSend Server (v2.0) 已启动!`);
+    console.log(`🚀 FastSend Server (v2.0) 已重启!`);
     console.log(`服务端监控: ${displayUrl}`);
     console.log(`=========================================\n`);
+    discovery.startBroadcasting(PORT, os.hostname());
     qrcodeTerminal.generate(displayUrl, { small: true });
 });
