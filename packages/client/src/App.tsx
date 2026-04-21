@@ -1,6 +1,6 @@
 ﻿import React, { useState, useEffect, useRef } from 'react';
 import { io, Socket } from 'socket.io-client';
-import { Send, QrCode, X, Paperclip, Check, UploadCloud, Laptop, Smartphone, Clipboard, Trash2 } from 'lucide-react';
+import { Send, QrCode, X, Paperclip, Check, UploadCloud, Laptop, Smartphone, Clipboard, Trash2, Loader2 } from 'lucide-react';
 import { SharedItem, Device, ServerConfig } from './types';
 import { MessageItem } from './components/MessageItem';
 
@@ -19,12 +19,30 @@ export default function App() {
   const [toasts, setToasts] = useState<{id:number, message:string, type:string}[]>([]);
   const [previewMedia, setPreviewMedia] = useState<{ url: string, type: 'image' | 'video' } | null>(null);
   const [isDragging, setIsDragging] = useState(false);
+  const [baseUrl, setBaseUrl] = useState(localStorage.getItem('fast_send_last_url') || '');
+  
   const socketRef = useRef<Socket | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    socketRef.current = io();
+    // 监听来自 Electron 主进程的服务器配置
+    if ((window as any).electronAPI) {
+      (window as any).electronAPI.onServerConfig((conf: any) => {
+        setBaseUrl(conf.url);
+        localStorage.setItem('fast_send_last_url', conf.url);
+      });
+      // 启动时主动请求一次，防止漏掉初始发送
+      (window as any).electronAPI.requestConfig();
+    } else if (!baseUrl) {
+        setBaseUrl(window.location.origin);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!baseUrl) return;
+
+    socketRef.current = io(baseUrl);
     socketRef.current.on('new-item', (item: SharedItem) => {
       setItems(prev => {
         const idx = prev.findIndex(i => i.id === item.id || (i.senderId === item.senderId && i.type === 'file' && i.originalName === item.originalName && i.progress !== undefined));
@@ -37,14 +55,15 @@ export default function App() {
     socketRef.current.on('devices-update', (d: Device[]) => setDevices(d));
     fetchData();
     return () => { socketRef.current?.disconnect(); };
-  }, []);
+  }, [baseUrl]);
 
   useEffect(() => { if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight; }, [items]);
 
   const fetchData = async () => {
+    if (!baseUrl) return;
     try {
-      const c = await (await fetch(`/api/config?url=${window.location.origin}`)).json(); setConfig(c);
-      const i = await (await fetch('/api/items')).json(); setItems(i.slice().reverse());
+      const c = await (await fetch(`${baseUrl}/api/config?url=${baseUrl}`)).json(); setConfig(c);
+      const i = await (await fetch(`${baseUrl}/api/items`)).json(); setItems(i.slice().reverse());
     } catch (e) { console.error(e); }
   };
 
@@ -55,26 +74,27 @@ export default function App() {
   };
 
   const handleSendText = async () => {
-    if (!inputText.trim()) return;
+    if (!inputText.trim() || !baseUrl) return;
     try {
-      await fetch('/api/text', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ content: inputText, senderId: CLIENT_ID }) });
+      await fetch(`${baseUrl}/api/text`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ content: inputText, senderId: CLIENT_ID }) });
       setInputText('');
       showToast('发送成功');
     } catch (e) { showToast('发送失败', 'error'); }
   };
 
   const uploadFile = (file: File) => {
+    if (!baseUrl) return;
     const tempId = Date.now() + Math.random();
     setItems(p => [...p, { id: tempId, type: 'file', originalName: file.name, size: (file.size / 1024 / 1024).toFixed(2) + ' MB', time: new Date().toLocaleTimeString(), fullTime: new Date().toISOString(), senderId: CLIENT_ID, progress: 0 }]);
     const formData = new FormData(); formData.append('senderId', CLIENT_ID); formData.append('file', file);
-    const xhr = new XMLHttpRequest(); xhr.open('POST', '/api/upload', true);
+    const xhr = new XMLHttpRequest(); xhr.open('POST', `${baseUrl}/api/upload`, true);
     xhr.upload.onprogress = (e) => { if (e.lengthComputable) { const pct = Math.round((e.loaded / e.total) * 100); setItems(p => p.map(x => x.id === tempId ? { ...x, progress: pct } : x)); } };
     xhr.onload = () => { if (xhr.status !== 200) { showToast('上传失败', 'error'); setItems(p => p.filter(x => x.id !== tempId)); } else showToast('上传成功'); };
     xhr.send(formData);
   };
 
-  const handleDelete = (id: number) => fetch(`/api/items/${id}`, { method: 'DELETE' });
-  const handleClearAll = async () => { if (window.confirm('确定要清空所有记录吗？')) await fetch('/api/items', { method: 'DELETE' }); };
+  const handleDelete = (id: number) => fetch(`${baseUrl}/api/items/${id}`, { method: 'DELETE' });
+  const handleClearAll = async () => { if (window.confirm('确定要清空所有记录吗？')) await fetch(`${baseUrl}/api/items`, { method: 'DELETE' }); };
 
   const copyToClipboard = async (text: string) => {
     try {
@@ -108,6 +128,12 @@ export default function App() {
           <button onClick={() => setShowQR(!showQR)} className="p-2 hover:bg-slate-100 rounded-full text-slate-600 active:scale-90"><QrCode size={20} /></button>
         </div>
       </nav>
+      {!baseUrl ? (
+          <div className="flex-1 flex flex-col items-center justify-center text-slate-400 gap-4">
+              <Loader2 size={48} className="animate-spin text-blue-500" />
+              <p className="text-sm font-medium">正在连接服务...</p>
+          </div>
+      ) : (
       <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-6 space-y-4">
         {items.map((item, index) => {
           const showDate = index === 0 || (item.fullTime && items[index-1].fullTime && new Date(item.fullTime).toDateString() !== new Date(items[index-1].fullTime).toDateString());
@@ -122,7 +148,7 @@ export default function App() {
               <MessageItem 
                 item={item} 
                 isMine={String(item.senderId) === String(CLIENT_ID)} 
-                downloadUrl={`${window.location.protocol}//${config?.ip}:${window.location.port === '5173' ? '3000' : window.location.port}/download/${item.filename}`}
+                downloadUrl={`${baseUrl}/download/${item.filename}`}
                 onCopy={copyToClipboard}
                 onDelete={handleDelete}
                 onPreview={(url, type) => setPreviewMedia({ url, type })}
@@ -131,6 +157,7 @@ export default function App() {
           );
         })}
       </div>
+      )}
       <div className="bg-white border-t p-3 pb-6 sm:p-4 sm:pb-8 shrink-0 z-50">
         <div className="max-w-3xl mx-auto flex items-end gap-2 bg-slate-100 p-2 rounded-[1.8rem] border border-slate-200 focus-within:border-blue-400 focus-within:bg-white transition-all shadow-sm">
           <button onClick={() => fileInputRef.current?.click()} className="p-3.5 text-slate-400 hover:text-blue-600 rounded-full shrink-0"><Paperclip size={20} /></button>

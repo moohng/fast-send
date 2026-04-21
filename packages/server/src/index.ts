@@ -18,7 +18,7 @@ const server = http.createServer(app);
 const io = new Server(server, { cors: { origin: "*" } });
 
 const PORT = process.env.PORT ? parseInt(process.env.PORT) : 3000;
-const UPLOAD_DIR = path.join(__dirname, '../../../uploads');
+const UPLOAD_DIR = path.join(os.homedir(), '.fastsend', 'uploads');
 
 if (!fs.existsSync(UPLOAD_DIR)) fs.mkdirSync(UPLOAD_DIR, { recursive: true });
 

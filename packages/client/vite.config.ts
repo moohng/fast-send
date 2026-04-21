@@ -1,10 +1,12 @@
-import { defineConfig } from 'vite'
+﻿import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 
+// https://vite.dev/config/
 export default defineConfig({
   plugins: [react()],
+  base: './', // 确保 Electron file:// 协议下资源路径正确
   server: {
-    host: '0.0.0.0', // 允许局域网通过 IP 访问
+    host: '0.0.0.0',
     port: 5173,
     proxy: {
       '/api': 'http://localhost:3000',
