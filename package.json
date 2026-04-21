@@ -1,19 +1,16 @@
 {
-  "name": "fast-send",
-  "version": "1.0.0",
-  "description": "Multi-device LAN data sharing tool",
-  "main": "server/index.js",
+  "name": "fast-send-monorepo",
+  "private": true,
+  "workspaces": [
+    "packages/*"
+  ],
   "scripts": {
-    "server": "node server/index.js",
-    "client": "npm run dev --prefix client",
-    "start": "node server/index.js"
+    "server": "npm run dev --workspace=@fast-send/server",
+    "client": "npm run dev --workspace=@fast-send/client",
+    "check": "npm run check --workspaces",
+    "build": "npm run build --workspaces"
   },
   "dependencies": {
-    "cors": "2.8.6",
-    "express": "5.2.1",
-    "multer": "2.1.1",
-    "qrcode": "1.5.4",
-    "qrcode-terminal": "0.12.0",
-    "socket.io": "4.8.3"
+    "better-sqlite3": "12.9.0"
   }
 }

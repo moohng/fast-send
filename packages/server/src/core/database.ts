@@ -1,0 +1,67 @@
+﻿import * as fs from 'fs';
+import * as path from 'path';
+
+/**
+ * 共享项目的数据结构接口
+ */
+export interface SharedItem {
+    id: number;
+    type: 'text' | 'file';
+    content?: string;
+    filename?: string;
+    originalName?: string;
+    size?: string;
+    time: string;
+}
+
+/**
+ * 极简数据持久化工具 (JSON版)。
+ * 临时替代 SQLite 以解决特定环境下的磁盘 IO 权限错误。
+ */
+class DataStore {
+    private items: SharedItem[];
+    private storagePath: string;
+
+    constructor() {
+        this.storagePath = path.join(__dirname, '../../fast-send-data.json');
+        this.items = this._load();
+    }
+
+    private _load(): SharedItem[] {
+        try {
+            if (fs.existsSync(this.storagePath)) {
+                return JSON.parse(fs.readFileSync(this.storagePath, 'utf8'));
+            }
+        } catch (e) {
+            console.error('Failed to load storage:', e);
+        }
+        return [];
+    }
+
+    private _save(): void {
+        try {
+            fs.writeFileSync(this.storagePath, JSON.stringify(this.items, null, 2));
+        } catch (e) {
+            console.error('Failed to save storage:', e);
+        }
+    }
+
+    public getAll(): SharedItem[] {
+        return this.items;
+    }
+
+    public add(item: Omit<SharedItem, 'id'>): SharedItem {
+        const newItem = { ...item, id: Date.now() };
+        this.items.unshift(newItem);
+        if (this.items.length > 100) this.items.pop();
+        this._save();
+        return newItem;
+    }
+
+    public clear(): void {
+        this.items = [];
+        this._save();
+    }
+}
+
+export const db = new DataStore();
