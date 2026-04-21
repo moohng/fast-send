@@ -1,4 +1,4 @@
-import express, { Request, Response } from 'express';
+﻿import express, { Request, Response } from 'express';
 import * as http from 'http';
 import { Server } from 'socket.io';
 import * as path from 'path';
@@ -17,7 +17,7 @@ const app = express();
 const server = http.createServer(app);
 const io = new Server(server, { cors: { origin: "*" } });
 
-const PORT = 3000;
+const PORT = process.env.PORT ? parseInt(process.env.PORT) : 3000;
 const UPLOAD_DIR = path.join(__dirname, '../../../uploads');
 
 if (!fs.existsSync(UPLOAD_DIR)) fs.mkdirSync(UPLOAD_DIR, { recursive: true });
@@ -80,15 +80,15 @@ app.get('/api/items', (req: Request, res: Response) => res.json(db.getAll()));
 
 app.post('/api/text', (req: Request, res: Response) => {
     const { content, senderId } = req.body;
-      if (!content) return res.status(400).send();
-      const item = db.add({ 
+    if (!content) return res.status(400).send();
+    const item = db.add({ 
         type: 'text', 
         content, 
         senderId: String(senderId), 
         time: new Date().toLocaleTimeString(),
         fullTime: new Date().toISOString()
-      });
-      io.emit('new-item', item);
+    });
+    io.emit('new-item', item);
     res.json(item);
 });
 
@@ -99,11 +99,11 @@ app.post('/api/upload', upload.single('file'), (req: Request, res: Response) => 
         type: 'file',
         filename: req.file.filename,
         originalName: req.file.originalname,
-          size: (req.file.size / 1024 / 1024).toFixed(2) + ' MB',
-          senderId: String(senderId),
-          time: new Date().toLocaleTimeString(),
-          fullTime: new Date().toISOString()
-      });
+        size: (req.file.size / 1024 / 1024).toFixed(2) + ' MB',
+        senderId: String(senderId),
+        time: new Date().toLocaleTimeString(),
+        fullTime: new Date().toISOString()
+    });
     io.emit('new-item', item);
     res.json(item);
 });
@@ -118,15 +118,22 @@ app.delete('/api/items/:id', (req: Request, res: Response) => {
     } else res.status(404).send();
 });
 
-app.post('/api/clear', (req: Request, res: Response) => {
+app.delete('/api/items', (req: Request, res: Response) => {
     db.clear();
     io.emit('items-cleared');
     res.json({ success: true });
 });
 
-const localIP = getLocalIP();
-server.listen(PORT, '0.0.0.0', () => {
-    console.log(`🚀 FastSend v2.1 Started at ${localIP}:${PORT}`);
+server.listen(PORT, '0.0.0.0', async () => {
+    const ip = getLocalIP();
+    const url = `http://${ip}:${PORT}`;
+    const qr = await QRCode.toDataURL(url);
+    
+    console.log(`🚀 FastSend v2.1 Started at ${ip}:${PORT}`);
     discovery.startBroadcasting(PORT, os.hostname());
-    qrcodeTerminal.generate(`http://${localIP}:${PORT}`, { small: true });
+    qrcodeTerminal.generate(url, { small: true });
+    
+    if (process.send) {
+        process.send({ type: 'server-ready', config: { ip, port: PORT, url, qr } });
+    }
 });
