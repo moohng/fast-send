@@ -1,0 +1,19 @@
+{
+  "name": "fast-send",
+  "version": "1.0.0",
+  "description": "Multi-device LAN data sharing tool",
+  "main": "server/index.js",
+  "scripts": {
+    "server": "node server/index.js",
+    "client": "npm run dev --prefix client",
+    "start": "node server/index.js"
+  },
+  "dependencies": {
+    "cors": "2.8.6",
+    "express": "5.2.1",
+    "multer": "2.1.1",
+    "qrcode": "1.5.4",
+    "qrcode-terminal": "0.12.0",
+    "socket.io": "4.8.3"
+  }
+}
