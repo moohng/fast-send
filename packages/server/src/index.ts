@@ -41,9 +41,8 @@ const upload = multer({ storage: storage });
 const activeDevices = new Map<string, { name: string, ip: string, lastSeen: number }>();
 
 io.on('connection', (socket) => {
-    const deviceId = socket.id;
     const rawUA = socket.handshake.headers['user-agent'];
-    const userAgent = (Array.isArray(rawUA) ? rawUA[0] : (rawUA as string | undefined)) || 'Unknown Device';
+    const userAgent = (Array.isArray(rawUA) ? rawUA[0] : rawUA) || 'Unknown Device';
     
     let deviceName = 'Web Device';
     if (userAgent.includes('iPhone')) deviceName = 'iPhone';
@@ -51,16 +50,15 @@ io.on('connection', (socket) => {
     else if (userAgent.includes('Windows')) deviceName = 'Windows PC';
     else if (userAgent.includes('Macintosh')) deviceName = 'Mac';
 
-    activeDevices.set(deviceId, { 
+    activeDevices.set(socket.id, { 
         name: deviceName, 
         ip: socket.handshake.address,
         lastSeen: Date.now() 
     });
 
     io.emit('devices-update', Array.from(activeDevices.values()));
-
     socket.on('disconnect', () => {
-        activeDevices.delete(deviceId);
+        activeDevices.delete(socket.id);
         io.emit('devices-update', Array.from(activeDevices.values()));
     });
 });
@@ -82,26 +80,24 @@ app.get('/api/items', (req: Request, res: Response) => res.json(db.getAll()));
 
 app.post('/api/text', (req: Request, res: Response) => {
     const { content, senderId } = req.body;
-    if (!content) return res.status(400).send({ error: 'Content required' });
-    const itemData = { type: 'text' as const, content, time: new Date().toLocaleTimeString() };
-    const item = db.add(itemData);
-    // 强制广播 senderId，确保前端能收到
-    io.emit('new-item', { ...item, senderId: String(senderId) });
+    if (!content) return res.status(400).send();
+    const item = db.add({ type: 'text', content, senderId: String(senderId), time: new Date().toLocaleTimeString() });
+    io.emit('new-item', item);
     res.json(item);
 });
 
 app.post('/api/upload', upload.single('file'), (req: Request, res: Response) => {
     const senderId = req.body.senderId;
-    if (!req.file) return res.status(400).send({ error: 'File required' });
-    const itemData = {
-        type: 'file' as const,
+    if (!req.file) return res.status(400).send();
+    const item = db.add({
+        type: 'file',
         filename: req.file.filename,
         originalName: req.file.originalname,
         size: (req.file.size / 1024 / 1024).toFixed(2) + ' MB',
+        senderId: String(senderId),
         time: new Date().toLocaleTimeString(),
-    };
-    const item = db.add(itemData);
-    io.emit('new-item', { ...item, senderId: String(senderId) });
+    });
+    io.emit('new-item', item);
     res.json(item);
 });
 
@@ -112,7 +108,7 @@ app.delete('/api/items/:id', (req: Request, res: Response) => {
     if (db.remove(id)) {
         io.emit('item-removed', id);
         res.json({ success: true });
-    } else res.status(404).json({ error: 'Not found' });
+    } else res.status(404).send();
 });
 
 app.post('/api/clear', (req: Request, res: Response) => {
@@ -122,12 +118,8 @@ app.post('/api/clear', (req: Request, res: Response) => {
 });
 
 const localIP = getLocalIP();
-const displayUrl = `http://${localIP}:${PORT}`;
 server.listen(PORT, '0.0.0.0', () => {
-    console.log(`\n=========================================`);
-    console.log(`🚀 FastSend Server (v2.0) 已重启!`);
-    console.log(`服务端监控: ${displayUrl}`);
-    console.log(`=========================================\n`);
+    console.log(`🚀 FastSend v2.1 Started at ${localIP}:${PORT}`);
     discovery.startBroadcasting(PORT, os.hostname());
-    qrcodeTerminal.generate(displayUrl, { small: true });
+    qrcodeTerminal.generate(`http://${localIP}:${PORT}`, { small: true });
 });
