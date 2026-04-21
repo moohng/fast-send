@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { io, Socket } from 'socket.io-client';
-import { Send, FileUp, Download, Copy, Trash2, QrCode, Smartphone, Laptop, Check, X, AlertCircle } from 'lucide-react';
+import { Send, FileUp, Download, Copy, Trash2, QrCode, Smartphone, Laptop, Check, X, AlertCircle, Plus, Paperclip } from 'lucide-react';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 
@@ -50,52 +50,42 @@ export default function App() {
   const [devices, setDevices] = useState<Device[]>([]);
   const [config, setConfig] = useState<ServerConfig | null>(null);
   const [inputText, setInputText] = useState('');
-  const [activeTab, setActiveTab] = useState<'text' | 'file'>('text');
   const [showQR, setShowQR] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [toasts, setToasts] = useState<Toast[]>([]);
   
   const socketRef = useRef<Socket | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     socketRef.current = io();
-    
     socketRef.current.on('new-item', (item: SharedItem) => {
-      // 调试用：console.log('Received item:', item.senderId, 'My ID:', CLIENT_ID);
       const isMine = String(item.senderId) === String(CLIENT_ID);
-      
       setItems(prev => {
         if (prev.some(i => i.id === item.id)) return prev;
-        return [item, ...prev];
+        return [...prev, item];
       });
-
-      if (isMine) {
-        showToast(item.type === 'text' ? '消息已成功发送' : '文件已上传共享', 'success');
-      } else {
-        showToast(`局域网新${item.type === 'text' ? '文字' : '文件'}`, 'info');
-      }
+      if (isMine) showToast(item.type === 'text' ? '发送成功' : '上传成功', 'success');
+      else showToast(`收到新${item.type === 'text' ? '文字' : '文件'}`, 'info');
     });
-    
     socketRef.current.on('item-removed', (id: number) => {
       setItems(prev => prev.filter(i => i.id !== id));
     });
-
     socketRef.current.on('items-cleared', () => {
       setItems([]);
       showToast('历史记录已清空', 'info');
     });
-
     socketRef.current.on('devices-update', (newDevices: Device[]) => {
       setDevices(newDevices);
     });
-
     fetchData();
-
-    return () => {
-      socketRef.current?.disconnect();
-    };
+    return () => { socketRef.current?.disconnect(); };
   }, []);
+
+  useEffect(() => {
+    if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+  }, [items]);
 
   const fetchData = async () => {
     try {
@@ -104,14 +94,14 @@ export default function App() {
       setConfig(configData);
       const itemsRes = await fetch('/api/items');
       const itemsData = await itemsRes.json();
-      setItems(itemsData);
+      setItems(itemsData.reverse());
     } catch (e) { console.error(e); }
   };
 
   const showToast = (message: string, type: Toast['type'] = 'success') => {
     const id = Date.now() + Math.random();
     setToasts(prev => [...prev, { id, message, type }]);
-    setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 3000);
+    setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 2500);
   };
 
   const handleSendText = async () => {
@@ -131,7 +121,7 @@ export default function App() {
     if (!file) return;
     setIsUploading(true);
     const formData = new FormData();
-    formData.append('senderId', CLIENT_ID); // 必须在 file 之前
+    formData.append('senderId', CLIENT_ID);
     formData.append('file', file);
     try {
       await fetch('/api/upload', { method: 'POST', body: formData });
@@ -142,116 +132,129 @@ export default function App() {
     }
   };
 
-  const copyToClipboard = (text: string) => {
-    navigator.clipboard.writeText(text);
-    showToast('已复制到剪贴板');
+  // 健壮的复制函数
+  const copyToClipboard = async (text: string) => {
+    if (!text) return;
+    try {
+      if (navigator.clipboard && window.isSecureContext) {
+        await navigator.clipboard.writeText(text);
+        showToast('内容已复制');
+      } else {
+        // 兼容性降级方案：创建隐藏 textarea
+        const textArea = document.createElement("textarea");
+        textArea.value = text;
+        textArea.style.position = "fixed";
+        textArea.style.left = "-999999px";
+        textArea.style.top = "-999999px";
+        document.body.appendChild(textArea);
+        textArea.focus();
+        textArea.select();
+        const successful = document.execCommand('copy');
+        document.body.removeChild(textArea);
+        if (successful) showToast('内容已复制');
+        else throw new Error('Copy failed');
+      }
+    } catch (err) {
+      showToast('复制失败，请手动选择文字', 'error');
+    }
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-900 font-sans pb-10">
-      <nav className="sticky top-0 z-50 bg-white/80 backdrop-blur-md border-b px-4 py-3 flex justify-between items-center shadow-sm">
+    <div className="h-screen bg-slate-100 text-slate-900 font-sans flex flex-col overflow-hidden">
+      <nav className="h-16 bg-white/80 backdrop-blur-md border-b px-4 flex justify-between items-center shadow-sm shrink-0 z-50">
         <div className="flex items-center gap-2">
-          <div className="w-9 h-9 bg-blue-600 rounded-xl flex items-center justify-center text-white font-black shadow-lg shadow-blue-200 text-lg">FS</div>
-          <h1 className="text-xl font-bold tracking-tight bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent">FastSend</h1>
+          <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center text-white font-black">FS</div>
+          <h1 className="text-lg font-bold tracking-tight bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent">FastSend Stream</h1>
         </div>
         <div className="flex items-center gap-3">
-          <div className="hidden sm:flex -space-x-2">
+          <div className="flex -space-x-1.5 mr-1">
             {devices.map((device, idx) => (
-              <div key={idx} className="w-8 h-8 rounded-full bg-white border-2 border-slate-50 flex items-center justify-center text-blue-600 shadow-sm ring-1 ring-slate-100" title={device.name}>
-                {device.name.includes('PC') || device.name.includes('Mac') ? <Laptop size={14} /> : <Smartphone size={14} />}
+              <div key={idx} className="w-7 h-7 rounded-full bg-slate-50 border border-white flex items-center justify-center text-blue-500 shadow-sm" title={device.name}>
+                {device.name.includes('PC') || device.name.includes('Mac') ? <Laptop size={12} /> : <Smartphone size={12} />}
               </div>
             ))}
           </div>
-          <button onClick={() => setShowQR(!showQR)} className="p-2 hover:bg-slate-100 rounded-full transition-all text-slate-600 active:scale-90"><QrCode size={22} /></button>
+          <button onClick={() => setShowQR(!showQR)} className="p-2 hover:bg-slate-100 rounded-full transition-all text-slate-600 active:scale-90"><QrCode size={20} /></button>
         </div>
       </nav>
 
+      <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 space-y-6 scroll-smooth bg-[#f8fafc]">
+        {items.length === 0 ? (
+          <div className="h-full flex flex-col items-center justify-center space-y-4 opacity-30">
+            <div className="w-20 h-20 bg-white rounded-full flex items-center justify-center shadow-inner"><Send size={32} /></div>
+            <p className="font-bold text-sm uppercase tracking-widest">等待数据同步...</p>
+          </div>
+        ) : (
+          items.map((item) => {
+            const isMine = item.senderId === CLIENT_ID;
+            const contentToCopy = item.type === 'text' ? item.content : `${window.location.protocol}//${config?.ip}:${window.location.port === '5173' ? '3000' : window.location.port}/download/${item.filename}`;
+            return (
+              <div key={item.id} className={cn("flex flex-col", isMine ? "items-end" : "items-start animate-in")}>
+                <div className={cn("flex max-w-[85%] sm:max-w-[70%] group gap-2", isMine ? "flex-row-reverse" : "flex-row")}>
+                  <div className="w-8 h-8 rounded-full bg-white border border-slate-200 flex items-center justify-center shrink-0 shadow-sm mt-1">
+                    {isMine ? <Laptop size={14} className="text-blue-600" /> : <Smartphone size={14} className="text-slate-500" />}
+                  </div>
+                  <div className="space-y-1">
+                    <div className={cn("p-4 rounded-2xl shadow-sm text-sm relative", isMine ? "bg-blue-600 text-white rounded-tr-none" : "bg-white text-slate-700 border border-slate-200 rounded-tl-none")}>
+                      {item.type === 'text' ? (
+                        <div className="leading-relaxed break-all whitespace-pre-wrap font-medium">{item.content}</div>
+                      ) : (
+                        <div className="flex items-center gap-4 py-1">
+                          <div className={cn("w-10 h-10 rounded-xl flex items-center justify-center shadow-inner", isMine ? "bg-blue-500" : "bg-slate-100")}>
+                            <FileUp size={20} />
+                          </div>
+                          <div className="min-w-0 pr-2">
+                            <p className="font-bold truncate text-xs">{item.originalName}</p>
+                            <p className={cn("text-[9px] uppercase font-bold mt-0.5", isMine ? "text-blue-100" : "text-slate-400")}>{item.size}</p>
+                          </div>
+                        </div>
+                      )}
+                      <div className={cn("absolute top-0 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity p-1", isMine ? "right-full mr-2" : "left-full ml-2")}>
+                        <button onClick={() => copyToClipboard(contentToCopy || '')} className="p-1.5 bg-white shadow-md border rounded-lg text-slate-400 hover:text-blue-600" title="复制内容"><Copy size={12} /></button>
+                        {item.type === 'file' && (
+                           <a href={`/download/${item.filename}`} download={item.originalName} className="p-1.5 bg-white shadow-md border rounded-lg text-slate-400 hover:text-green-600" title="下载文件"><Download size={12} /></a>
+                        )}
+                        <button onClick={() => fetch(`/api/items/${item.id}`, {method:'DELETE'})} className="p-1.5 bg-white shadow-md border rounded-lg text-slate-400 hover:text-rose-600" title="删除记录"><X size={12} /></button>
+                      </div>
+                    </div>
+                    <p className="text-[9px] text-slate-400 font-bold px-1 uppercase tracking-tighter">{item.time}</p>
+                  </div>
+                </div>
+              </div>
+            );
+          })
+        )}
+      </div>
+
+      <div className="bg-white border-t p-3 pb-6 sm:p-4 sm:pb-6 shrink-0 z-50">
+        <div className="max-w-3xl mx-auto flex items-end gap-2 bg-slate-100 p-2 rounded-[1.5rem] border border-slate-200 focus-within:border-blue-400 focus-within:bg-white transition-all shadow-inner">
+          <button onClick={() => fileInputRef.current?.click()} disabled={isUploading} className="p-3 text-slate-400 hover:text-blue-600 active:scale-90 transition-all shrink-0">
+            {isUploading ? <div className="w-5 h-5 border-2 border-blue-600 border-t-transparent animate-spin rounded-full" /> : <Paperclip size={20} />}
+          </button>
+          <input type="file" ref={fileInputRef} onChange={handleFileUpload} className="hidden" />
+          <textarea rows={1} value={inputText} onChange={e => setInputText(e.target.value)} onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSendText(); } }} placeholder="输入消息、链接..." className="flex-1 bg-transparent border-none focus:ring-0 text-sm py-3 px-1 resize-none max-h-32 min-h-[44px]" />
+          <button onClick={handleSendText} disabled={!inputText.trim()} className={cn("p-3 rounded-2xl transition-all shrink-0", inputText.trim() ? "bg-blue-600 text-white shadow-lg shadow-blue-200 active:scale-90" : "text-slate-300")}><Send size={20} /></button>
+        </div>
+      </div>
+
       <div className="fixed top-20 left-1/2 -translate-x-1/2 z-[100] flex flex-col gap-2 pointer-events-none">
         {toasts.map(toast => (
-          <div key={toast.id} className={cn(
-            "px-6 py-2.5 rounded-full text-sm font-bold shadow-2xl animate-in pointer-events-auto flex items-center gap-2 transition-all",
-            toast.type === 'success' ? "bg-blue-600 text-white" : 
-            toast.type === 'error' ? "bg-rose-500 text-white" : "bg-slate-800 text-white border border-slate-700"
-          )}>
-            {toast.type === 'error' && <AlertCircle size={16} />}
-            {toast.type === 'success' && <Check size={16} />}
+          <div key={toast.id} className={cn("px-6 py-2 rounded-full text-xs font-black shadow-2xl animate-in pointer-events-auto flex items-center gap-2 transition-all", toast.type === 'success' ? "bg-blue-600 text-white" : toast.type === 'error' ? "bg-rose-500 text-white" : "bg-slate-800 text-white")}>
             {toast.message}
           </div>
         ))}
       </div>
 
-      <main className="max-w-2xl mx-auto p-4 space-y-6 mt-4">
-        {showQR && config && (
-          <div className="fixed inset-0 z-[60] bg-black/60 backdrop-blur-sm flex items-center justify-center p-6" onClick={() => setShowQR(false)}>
-            <div className="bg-white p-8 rounded-[2.5rem] shadow-2xl text-center animate-in" onClick={e => e.stopPropagation()}>
-              <div className="bg-slate-50 p-4 rounded-3xl mb-4 inline-block border border-slate-100 shadow-inner">
-                <img src={config.qr} alt="QR Code" className="w-64 h-64 mx-auto" />
-              </div>
-              <p className="text-slate-800 font-bold text-lg">扫码加入局域网</p>
-              <code className="block mt-4 text-blue-600 bg-blue-50 px-4 py-2 rounded-2xl text-xs select-all font-mono border border-blue-100">{config.url}</code>
-            </div>
-          </div>
-        )}
-
-        <div className="bg-white rounded-[2rem] shadow-xl shadow-slate-200/50 border border-slate-100 overflow-hidden">
-          <div className="flex p-1.5 bg-slate-50/50">
-            <button onClick={() => setActiveTab('text')} className={cn("flex-1 py-3 rounded-2xl text-sm font-bold transition-all", activeTab === 'text' ? "bg-white shadow-md text-blue-600" : "text-slate-400")}>文字消息</button>
-            <button onClick={() => setActiveTab('file')} className={cn("flex-1 py-3 rounded-2xl text-sm font-bold transition-all", activeTab === 'file' ? "bg-white shadow-md text-blue-600" : "text-slate-400")}>文件共享</button>
-          </div>
-          <div className="p-6">
-            {activeTab === 'text' ? (
-              <div className="space-y-4">
-                <textarea value={inputText} onChange={e => setInputText(e.target.value)} placeholder="在此输入内容..." className="w-full h-36 p-5 bg-slate-50 border-none rounded-3xl focus:ring-2 focus:ring-blue-500 outline-none resize-none font-medium" />
-                <button onClick={handleSendText} className="w-full bg-blue-600 text-white font-bold py-4 rounded-[1.2rem] hover:bg-blue-700 active:scale-95 transition-all shadow-lg shadow-blue-200 flex items-center justify-center gap-2"><Send size={20} />发送给局域网</button>
-              </div>
-            ) : (
-              <div className="space-y-4">
-                <input type="file" ref={fileInputRef} onChange={handleFileUpload} className="hidden" />
-                <button onClick={() => fileInputRef.current?.click()} disabled={isUploading} className="w-full aspect-[2/1] border-2 border-dashed border-slate-200 rounded-[2rem] flex flex-col items-center justify-center gap-4 hover:border-blue-400 hover:bg-blue-50/50 transition-all group">
-                  <div className={cn("w-20 h-20 rounded-3xl flex items-center justify-center transition-all", isUploading ? "bg-blue-600 text-white animate-pulse" : "bg-blue-50 text-blue-600 group-hover:scale-110")}><FileUp size={40} /></div>
-                  <div className="text-center"><p className="font-bold text-slate-700 text-lg">{isUploading ? '正在上传...' : '选择共享文件'}</p></div>
-                </button>
-              </div>
-            )}
+      {showQR && config && (
+        <div className="fixed inset-0 z-[60] bg-black/60 backdrop-blur-sm flex items-center justify-center p-6" onClick={() => setShowQR(false)}>
+          <div className="bg-white p-8 rounded-[2.5rem] shadow-2xl text-center animate-in" onClick={e => e.stopPropagation()}>
+            <img src={config.qr} alt="QR" className="w-56 h-56 mx-auto mb-4" />
+            <p className="text-slate-800 font-black text-sm uppercase tracking-widest">Scan to Join</p>
+            <code className="block mt-4 text-blue-600 bg-blue-50 px-4 py-2 rounded-xl text-[10px] font-mono border border-blue-100">{config.url}</code>
           </div>
         </div>
-
-        <div className="space-y-4">
-          <div className="flex justify-between items-center px-4">
-            <h2 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">最近共享内容</h2>
-            <button onClick={() => { if(confirm('清空历史？')) fetch('/api/clear', {method:'POST'}) }} className="p-2 text-slate-300 hover:text-rose-500 transition-all"><Trash2 size={18} /></button>
-          </div>
-          <div className="space-y-4">
-            {items.length === 0 ? (
-              <div className="py-24 text-center space-y-4 opacity-30"><Send size={40} className="mx-auto" /><p className="font-bold">暂无内容</p></div>
-            ) : (
-              items.map(item => (
-                <div key={item.id} className="bg-white p-6 rounded-[2rem] border border-slate-100 shadow-sm hover:shadow-xl transition-all group">
-                  <div className="flex justify-between items-start mb-4">
-                    <span className="text-[10px] font-black text-blue-500 bg-blue-50 px-2.5 py-1 rounded-lg uppercase tracking-wider">{item.type}</span>
-                    <div className="flex items-center gap-3">
-                      <span className="text-[10px] text-slate-300 font-bold">{item.time}</span>
-                      <button onClick={() => fetch(`/api/items/${item.id}`, {method:'DELETE'})} className="opacity-0 group-hover:opacity-100 text-slate-200 hover:text-rose-500 transition-all"><X size={14} /></button>
-                    </div>
-                  </div>
-                  {item.type === 'text' ? (
-                    <div className="space-y-4">
-                      <div className="text-slate-700 leading-relaxed break-all whitespace-pre-wrap font-medium">{item.content}</div>
-                      <button onClick={() => copyToClipboard(item.content || '')} className="flex items-center gap-2 text-[10px] font-black text-slate-400 hover:text-blue-600 uppercase transition-all"><Copy size={12} /> 复制内容</button>
-                    </div>
-                  ) : (
-                    <div className="flex items-center gap-5">
-                      <div className="w-16 h-16 bg-slate-50 rounded-2xl flex items-center justify-center text-blue-600 border border-slate-100"><FileUp size={32} /></div>
-                      <div className="flex-1 min-w-0"><p className="font-bold text-slate-800 truncate">{item.originalName}</p><p className="text-[10px] text-slate-400 font-bold uppercase">{item.size}</p></div>
-                      <a href={`/download/${item.filename}`} download={item.originalName} className="p-4 bg-slate-900 text-white rounded-[1.2rem] hover:bg-blue-600 transition-all"><Download size={24} /></a>
-                    </div>
-                  )}
-                </div>
-              ))
-            )}
-          </div>
-        </div>
-      </main>
+      )}
     </div>
   );
 }
+
