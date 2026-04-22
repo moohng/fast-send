@@ -1,40 +1,66 @@
-import { app, BrowserWindow, Tray, Menu, nativeImage, ipcMain, clipboard, dialog, shell, Notification } from 'electron';
+﻿import { app, BrowserWindow, Tray, Menu, nativeImage, Notification, ipcMain, clipboard, dialog, shell } from 'electron';
 import * as path from 'path';
 import * as net from 'net';
 import { fileURLToPath } from 'url';
+import express from 'express';
+import * as http from 'http';
+import { Server } from 'socket.io';
+import cors from 'cors';
+import * as QRCode from 'qrcode';
+import multer from 'multer';
 import * as fs from 'fs';
 import * as os from 'os';
 import Store from 'electron-store';
 import archiver from 'archiver';
-import * as QRCode from 'qrcode';
-import crypto from 'crypto';
-
-// 导入重构后的 Server 逻辑
-import { startServer } from '../packages/server/src/index.ts';
-import type { ServerInstance } from '../packages/server/src/index.ts';
-import { db } from '../packages/server/src/core/database.ts';
-import { getLocalIP } from '../packages/server/src/utils/network.ts';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const store = new Store();
 let downloadPath = store.get('downloadPath') as string || path.join(app.getPath('downloads'), 'FastSend');
+if (!fs.existsSync(downloadPath)) fs.mkdirSync(downloadPath, { recursive: true });
 
 const isDev = !app.isPackaged;
 
+function getLocalIP() {
+    const interfaces = os.networkInterfaces();
+    const ips: string[] = [];
+    for (const devName in interfaces) {
+        const iface = interfaces[devName];
+        if (!iface) continue;
+        for (let i = 0; i < iface.length; i++) {
+            const alias = iface[i];
+            if (alias.family === 'IPv4' && !alias.internal) ips.push(alias.address);
+        }
+    }
+    const lanIP = ips.find(ip => ip.startsWith('192.168.'));
+    if (lanIP) return lanIP;
+    const otherLanIP = ips.find(ip => ip.startsWith('10.') || ip.startsWith('172.'));
+    return otherLanIP || (ips.length > 0 ? ips[0] : '127.0.0.1');
+}
+
+const STORAGE_PATH = path.join(os.homedir(), '.fastsend', 'data.json');
+if (!fs.existsSync(path.dirname(STORAGE_PATH))) fs.mkdirSync(path.dirname(STORAGE_PATH), { recursive: true });
+
+function loadData() {
+    try {
+        if (fs.existsSync(STORAGE_PATH)) return JSON.parse(fs.readFileSync(STORAGE_PATH, 'utf8'));
+    } catch (e) {}
+    return [];
+}
+function saveData(data: any[]) {
+    try {
+        fs.writeFileSync(STORAGE_PATH, JSON.stringify(data, null, 2));
+    } catch (e) {}
+}
+let sharedItems = loadData();
+
 let mainWindow: BrowserWindow | null = null;
 let tray: Tray | null = null;
-let serverInstance: ServerInstance | null = null;
 let serverConfig: any = null;
-
-let isClipboardSyncEnabled = store.get('isClipboardSyncEnabled') as boolean || false;
-let isAutoWriteClipboard = store.get('isAutoWriteClipboard') as boolean || false;
-let isImageClipboardSyncEnabled = store.get('isImageClipboardSyncEnabled') as boolean || false;
-
+let ioInstance: Server | null = null;
+let isClipboardSyncEnabled = false;
 let lastClipboardText = '';
-let lastImageHash = '';
-let lastNotificationId = 0; // 用于通知去重
 
 async function findPort(startPort: number): Promise<number> {
     return new Promise((resolve) => {
@@ -53,76 +79,95 @@ function startClipboardMonitor() {
         const text = clipboard.readText();
         if (text && text !== lastClipboardText && text.trim().length > 0) {
             lastClipboardText = text;
-            const newItem = db.add({ 
-                type: 'text', content: text, senderId: 'CLIPBOARD_SYNC', 
-                time: new Date().toLocaleTimeString(), fullTime: new Date().toISOString() 
-            });
-            if (serverInstance) serverInstance.io.emit('new-item', newItem);
-        }
-        if (isImageClipboardSyncEnabled) {
-            const image = clipboard.readImage();
-            if (!image.isEmpty()) {
-                const buffer = image.toPNG();
-                const hash = crypto.createHash('md5').update(buffer).digest('hex');
-                if (hash !== lastImageHash) {
-                    lastImageHash = hash;
-                    const filename = `clipboard-${Date.now()}.png`;
-                    const fullPath = path.join(downloadPath, filename);
-                    fs.writeFileSync(fullPath, buffer);
-                    const stats = fs.statSync(fullPath);
-                    const newItem = db.add({
-                        type: 'file', filename, originalName: filename,
-                        size: (stats.size / 1024 / 1024).toFixed(2) + ' MB',
-                        senderId: 'CLIPBOARD_IMAGE', time: new Date().toLocaleTimeString(), fullTime: new Date().toISOString()
-                    });
-                    if (serverInstance) serverInstance.io.emit('new-item', newItem);
-                }
-            }
+            syncTextToLAN(text, 'CLIPBOARD_SYNC');
         }
     }, 1500);
 }
 
+function syncTextToLAN(content: string, senderId: string) {
+    const newItem = { 
+        id: Date.now(), type: 'text', content, senderId, 
+        time: new Date().toLocaleTimeString(), fullTime: new Date().toISOString() 
+    };
+    sharedItems.push(newItem);
+    if (sharedItems.length > 100) sharedItems.pop();
+    saveData(sharedItems);
+    if (ioInstance) ioInstance.emit('new-item', newItem);
+}
+
 async function startBackend() {
-    try {
-        const port = await findPort(3000);
-        const baseDir = path.join(os.homedir(), '.fastsend');
-        serverInstance = await startServer(port, baseDir);
-        
-        serverInstance.io.on('connection', (socket) => {
-            socket.on('register', () => {
-                socket.emit('clipboard-config', { isClipboardSyncEnabled, isAutoWriteClipboard, isImageClipboardSyncEnabled });
-            });
-        });
+    const port = await findPort(3000);
+    const expressApp = express();
+    const server = http.createServer(expressApp);
+    ioInstance = new Server(server, { cors: { origin: "*" } });
 
-        const originalEmit = serverInstance.io.emit.bind(serverInstance.io);
-        serverInstance.io.emit = (event: string, ...args: any[]) => {
-            if (event === 'new-item') {
-                const item = args[0];
-                // 增加通知去重判断，且只有非本地发送的消息才通知
-                if (isAutoWriteClipboard && item.id !== lastNotificationId) {
-                    lastNotificationId = item.id;
-                    if (item.type === 'text' && !['CLIPBOARD_SYNC', 'DESKTOP'].includes(item.senderId)) {
-                        if (item.content !== clipboard.readText()) {
-                            clipboard.writeText(item.content);
-                            lastClipboardText = item.content;
-                            new Notification({ title: 'FastSend', body: '已自动同步文本到剪贴板' }).show();
-                        }
-                    }
-                }
-            }
-            return originalEmit(event, ...args);
-        };
+    expressApp.use(cors());
+    expressApp.use(express.json());
 
-        const ip = getLocalIP();
+    const clientDist = path.join(__dirname, '../packages/client/dist');
+    if (fs.existsSync(clientDist)) expressApp.use(express.static(clientDist));
+    
+    expressApp.use('/download', (req, res, next) => {
+        express.static(downloadPath)(req, res, next);
+    });
+
+    const storage = multer.diskStorage({
+        destination: (req, file, cb) => cb(null, downloadPath),
+        filename: (req, file, cb) => cb(null, Date.now() + '-' + file.originalname)
+    });
+    const upload = multer({ storage: storage });
+
+    expressApp.get('/api/config', async (req, res) => {
+        const localIP = getLocalIP();
+        // 开发模式下，二维码指向 Vite 的 5173 端口；生产模式指向后端端口
         const clientPort = isDev ? 5173 : port;
-        const url = `http://${ip}:${clientPort}`;
-        const qr = await QRCode.toDataURL(url);
-        serverConfig = { ip, port, url, qr, downloadPath };
+        const url = `http://${localIP}:${clientPort}`;
+        const qrDataUrl = await QRCode.toDataURL(url);
+        res.json({ ip: localIP, url: url, qr: qrDataUrl, downloadPath });
+    });
+
+    expressApp.get('/api/items', (req, res) => res.json(sharedItems));
+
+    expressApp.post('/api/text', (req, res) => {
+        syncTextToLAN(req.body.content, req.body.senderId);
+        res.json({ success: true });
+    });
+
+    expressApp.post('/api/upload', upload.single('file'), (req, res) => {
+        if (!req.file) return res.status(400).send();
+        const newItem = {
+            id: Date.now(), type: 'file', filename: req.file.filename,
+            originalName: req.file.originalname, size: (req.file.size / 1024 / 1024).toFixed(2) + ' MB',
+            senderId: req.body.senderId, time: new Date().toLocaleTimeString(), fullTime: new Date().toISOString()
+        };
+        sharedItems.push(newItem);
+        saveData(sharedItems);
+        if (ioInstance) ioInstance.emit('new-item', newItem);
+        if (req.body.senderId !== 'DESKTOP') {
+            new Notification({ title: '收到新共享文件', body: `文件已保存至: ${downloadPath}` }).show();
+        }
+        res.json(newItem);
+    });
+
+    expressApp.delete('/api/items/:id', (req, res) => {
+        sharedItems = sharedItems.filter((i: any) => i.id !== parseInt(req.params.id));
+        saveData(sharedItems);
+        if (ioInstance) ioInstance.emit('item-removed', parseInt(req.params.id));
+        res.json({ success: true });
+    });
+
+    expressApp.delete('/api/items', (req, res) => {
+        sharedItems = []; saveData(sharedItems);
+        if (ioInstance) ioInstance.emit('items-cleared');
+        res.json({ success: true });
+    });
+
+    server.listen(port, '0.0.0.0', async () => {
+        const ip = getLocalIP();
+        serverConfig = { ip, port, url: `http://${ip}:${port}`, downloadPath };
         if (mainWindow) mainWindow.webContents.send('server-config', serverConfig);
         updateTray();
-    } catch (err) {
-        dialog.showErrorBox('Server Error', `后端服务启动失败: ${err}`);
-    }
+    });
 }
 
 function createWindow() {
@@ -135,8 +180,10 @@ function createWindow() {
         },
         title: 'FastSend', show: false
     });
+
     if (isDev) mainWindow.loadURL('http://localhost:5173');
     else mainWindow.loadFile(path.join(__dirname, '../packages/client/dist/index.html'));
+
     mainWindow.once('ready-to-show', () => {
         mainWindow?.show();
         if (serverConfig) mainWindow?.webContents.send('server-config', serverConfig);
@@ -159,24 +206,7 @@ function createWindow() {
 
     ipcMain.on('toggle-clipboard-sync', (event, enabled) => {
         isClipboardSyncEnabled = enabled;
-        store.set('isClipboardSyncEnabled', enabled);
         if (enabled) lastClipboardText = clipboard.readText();
-        updateTray();
-    });
-
-    ipcMain.on('toggle-auto-write-clipboard', (event, enabled) => {
-        isAutoWriteClipboard = enabled;
-        store.set('isAutoWriteClipboard', enabled);
-        updateTray();
-    });
-
-    ipcMain.on('toggle-image-clipboard-sync', (event, enabled) => {
-        isImageClipboardSyncEnabled = enabled;
-        store.set('isImageClipboardSyncEnabled', enabled);
-        if (enabled) {
-            const img = clipboard.readImage();
-            if (!img.isEmpty()) lastImageHash = crypto.createHash('md5').update(img.toPNG()).digest('hex');
-        }
         updateTray();
     });
 
@@ -208,12 +238,14 @@ function createWindow() {
             const archive = archiver('zip', { zlib: { level: 9 } });
             output.on('close', () => {
                 const stats = fs.statSync(zipPath);
-                const newItem = db.add({
-                    type: 'file', filename: zipName,
+                const newItem = {
+                    id: Date.now(), type: 'file', filename: zipName,
                     originalName: `${folderName}.zip`, size: (stats.size / 1024 / 1024).toFixed(2) + ' MB',
                     senderId: 'DESKTOP', time: new Date().toLocaleTimeString(), fullTime: new Date().toISOString()
-                });
-                if (serverInstance) serverInstance.io.emit('new-item', newItem);
+                };
+                sharedItems.push(newItem);
+                saveData(sharedItems);
+                if (ioInstance) ioInstance.emit('new-item', newItem);
                 resolve(true);
             });
             archive.on('error', (err) => reject(err));
@@ -242,19 +274,9 @@ function updateTray() {
     const contextMenu = Menu.buildFromTemplate([
       { label: '打开主界面', click: () => mainWindow?.show() },
       { type: 'separator' },
-      { label: `同步文本剪贴板: ${isClipboardSyncEnabled ? '√' : '×'}`, click: () => {
+      { label: `剪贴板同步: ${isClipboardSyncEnabled ? '开启' : '关闭'}`, click: () => {
           isClipboardSyncEnabled = !isClipboardSyncEnabled;
-          store.set('isClipboardSyncEnabled', isClipboardSyncEnabled);
-          updateTray();
-      }},
-      { label: `同步图片剪贴板: ${isImageClipboardSyncEnabled ? '√' : '×'}`, click: () => {
-          isImageClipboardSyncEnabled = !isImageClipboardSyncEnabled;
-          store.set('isImageClipboardSyncEnabled', isImageClipboardSyncEnabled);
-          updateTray();
-      }},
-      { label: `自动接收局域网文本: ${isAutoWriteClipboard ? '√' : '×'}`, click: () => {
-          isAutoWriteClipboard = !isAutoWriteClipboard;
-          store.set('isAutoWriteClipboard', isAutoWriteClipboard);
+          if (mainWindow) mainWindow.webContents.send('clipboard-sync-status', isClipboardSyncEnabled);
           updateTray();
       }},
       { type: 'separator' },

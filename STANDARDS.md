@@ -18,3 +18,10 @@
 ## 4. UI/UX 规范
 - **响应式**：必须兼容移动端和桌面端，避免横向溢出。
 - **交互友好**：操作菜单应易于访问（如使用三点图标），关键操作需有 Toast 或状态反馈。
+
+## 5. Electron 架构规范 (Phase 4 增补)
+- **后端集成**：后端服务（Express/Socket.io）直接在 Electron 主进程中运行，避免 fork 导致的 ASAR 路径和依赖丢失问题。
+- **路径引用**：在生产环境下使用 `process.resourcesPath` 和 `app.asar` 定位资源，而非简单的 `__dirname`。
+- **IPC 通信**：前端与主进程通过 `preload.js` 暴露的 `electronAPI` 进行握手，动态获取服务器配置（如端口、IP）。
+- **静态托管**：主进程后端必须显式使用 `express.static` 托管 `packages/client/dist` 目录，以供局域网其他设备访问。
+- **数据持久化**：应用数据及上传文件统一存储在用户目录（`~/.fastsend`），解决安装后的写入权限问题。

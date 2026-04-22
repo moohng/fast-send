@@ -1,15 +1,29 @@
-﻿{
+{
   "compilerOptions": {
     "target": "ES2020",
     "module": "CommonJS",
-    "rootDir": "./src",
-    "outDir": "./dist",
+    "moduleResolution": "node",
     "esModuleInterop": true,
     "forceConsistentCasingInFileNames": true,
     "strict": true,
     "skipLibCheck": true,
-    "resolveJsonModule": true
+    "resolveJsonModule": true,
+    "baseUrl": ".",
+    "paths": {
+      "@fast-send/server/*": ["packages/server/src/*"],
+      "@fast-send/client/*": ["packages/client/src/*"]
+    }
   },
-  "include": ["src/**/*"],
-  "exclude": ["node_modules"]
+  "ts-node": {
+    "transpileOnly": true,
+    "compilerOptions": {
+      "module": "CommonJS"
+    }
+  },
+  "include": [
+    "electron/**/*",
+    "packages/server/src/**/*",
+    "packages/client/src/**/*"
+  ],
+  "exclude": ["node_modules", "dist", "packages/client/dist"]
 }

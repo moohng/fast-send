@@ -10,21 +10,27 @@ export interface SharedItem {
     size?: string;
     time: string;
     fullTime: string;
-    senderId: string; // 必须持久化
+    senderId: string;
 }
 
 class DataStore {
     private items: SharedItem[];
-    private storagePath: string;
+    private storagePath: string = '';
 
     constructor() {
-        this.storagePath = path.join(__dirname, '../../fast-send-data.json');
+        this.items = [];
+    }
+
+    public setStoragePath(p: string) {
+        this.storagePath = p;
+        const dir = path.dirname(p);
+        if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
         this.items = this._load();
     }
 
     private _load(): SharedItem[] {
         try {
-            if (fs.existsSync(this.storagePath)) {
+            if (this.storagePath && fs.existsSync(this.storagePath)) {
                 return JSON.parse(fs.readFileSync(this.storagePath, 'utf8'));
             }
         } catch (e) { console.error(e); }
@@ -33,6 +39,7 @@ class DataStore {
 
     private _save(): void {
         try {
+            if (!this.storagePath) return;
             fs.writeFileSync(this.storagePath, JSON.stringify(this.items, null, 2));
         } catch (e) { console.error(e); }
     }
@@ -58,3 +65,4 @@ class DataStore {
 }
 
 export const db = new DataStore();
+export const setStoragePath = (p: string) => db.setStoragePath(p);
