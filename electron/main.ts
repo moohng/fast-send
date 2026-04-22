@@ -235,6 +235,17 @@ function createWindow() {
         });
     });
 
+    ipcMain.handle('get-file-data', async (event, filePath: string) => {
+        try {
+            const buffer = fs.readFileSync(filePath);
+            const name = path.basename(filePath);
+            return { buffer, name };
+        } catch (e) {
+            console.error(e);
+            return null;
+        }
+    });
+
     mainWindow.on('close', (event) => {
         if (!(app as any).isQuitting) {
             event.preventDefault();

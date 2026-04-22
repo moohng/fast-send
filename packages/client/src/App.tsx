@@ -84,7 +84,16 @@ export default function App() {
     const tempId = Date.now() + Math.random();
     const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
 
-    setItems(p => [...p, { id: tempId, type: "file", originalName: file.name, size: (file.size / 1024 / 1024).toFixed(2) + " MB", time: new Date().toLocaleTimeString(), fullTime: new Date().toISOString(), senderId: CLIENT_ID, progress: 0 }]);
+    setItems(p => [...p, { 
+      id: tempId, 
+      type: "file", 
+      originalName: file.name, 
+      size: (file.size / 1024 / 1024).toFixed(2) + " MB", 
+      time: new Date().toLocaleTimeString(), 
+      fullTime: new Date().toISOString(), 
+      senderId: CLIENT_ID, 
+      progress: 0
+    }]);
 
     try {
       const hash = await calculateHash(file);
@@ -97,7 +106,7 @@ export default function App() {
       setItems(p => p.map(x => x.id === tempId ? { ...x, progress: initialPct } : x));
 
       // 并发上传逻辑
-      const pool: Promise<any>[] = [];
+      const pool = new Set<Promise<void>>();
       const MAX_CONCURRENT = 3;
 
       for (let i = 0; i < totalChunks; i++) {
@@ -108,25 +117,24 @@ export default function App() {
         const chunk = file.slice(start, end);
 
         const formData = new FormData();
-        // 重要：必须先添加字段，再添加二进制文件，确保后端 multer 能在读取文件前拿到 hash
         formData.append('hash', hash);
         formData.append('index', String(i));
         formData.append('fileName', file.name);
-        formData.append('chunk', chunk); // 文件放最后
+        formData.append('chunk', chunk);
 
-        const task = fetch(`${baseUrl}/api/upload/chunk`, { method: 'POST', body: formData })
-          .then(res => {
-             if (!res.ok) throw new Error('Chunk upload failed');
-             finishedChunks++;
-             const pct = Math.round((finishedChunks / totalChunks) * 100);
-             setItems(prev => prev.map(x => x.id === tempId ? { ...x, progress: pct } : x));
-          });
+        const task = (async () => {
+          const res = await fetch(`${baseUrl}/api/upload/chunk`, { method: 'POST', body: formData });
+          if (!res.ok) throw new Error('Chunk upload failed');
+          finishedChunks++;
+          const pct = Math.round((finishedChunks / totalChunks) * 100);
+          setItems(prev => prev.map(x => x.id === tempId ? { ...x, progress: pct } : x));
+        })();
 
-        pool.push(task);
-        if (pool.length >= MAX_CONCURRENT) {
+        pool.add(task);
+        task.finally(() => pool.delete(task));
+
+        if (pool.size >= MAX_CONCURRENT) {
           await Promise.race(pool);
-          // 移除已解决的 Promise
-          pool.splice(0, pool.length).filter(() => false); 
         }
       }
       await Promise.all(pool);
@@ -143,10 +151,11 @@ export default function App() {
       } else throw new Error('Merge failed');
     } catch (e) {
       console.error(e);
-      showToast('上传失败', 'error');
-      setItems(p => p.filter(x => x.id !== tempId));
+      showToast('上传中断', 'error');
+      setItems(p => p.map(x => x.id === tempId ? { ...x, status: 'error', progress: undefined } : x));
     }
   };
+
 
   const handleActionClick = (type: string) => {
     setIsMenuOpen(false);
@@ -211,8 +220,13 @@ export default function App() {
   const handleDelete = async (id: number) => {
     try {
       const res = await fetch(`${baseUrl}/api/items/${id}`, { method: 'DELETE' });
-      if (res.ok) { setItems(p => p.filter(x => x.id !== id)); showToast('已删除记录'); }
-    } catch (e) { showToast('删除失败', 'error'); }
+      if (res.ok) { 
+        setItems(p => p.filter(x => x.id !== id)); 
+        showToast('已删除记录'); 
+      }
+    } catch (e) { 
+      showToast('删除失败', 'error'); 
+    }
   };
 
   const handleToggleMenu = (id: number | null, rect?: DOMRect) => {
@@ -265,7 +279,7 @@ export default function App() {
         </div>
         <div className="flex gap-2"><button onClick={() => setShowQR(true)} className="p-2.5 bg-slate-100 hover:bg-blue-50 text-slate-600 hover:text-blue-600 rounded-xl transition-all"><QrCode size={20} /></button>{isElectron && <button onClick={() => setShowSettings(true)} className="p-2.5 bg-slate-100 hover:bg-blue-50 text-slate-600 hover:text-blue-600 rounded-xl transition-all"><Settings size={20} /></button>}</div>
       </div>
-      <div onScroll={() => activeMenu && setActiveMenu(null)} className="flex-1 overflow-y-auto p-4 sm:p-6 w-full"><div className="max-w-4xl mx-auto flex flex-col gap-4">{items.map(item => (<MessageItem key={item.id} item={item} isMe={item.senderId === CLIENT_ID || item.senderId === 'DESKTOP' || item.senderId === 'CLIPBOARD_SYNC' || item.senderId === 'CLIPBOARD_IMAGE'} baseUrl={baseUrl} onDelete={() => handleDelete(item.id)} onPreview={(url, type) => setPreviewMedia({ url, type })} isMenuOpen={activeMenu?.id === item.id} onToggleMenu={handleToggleMenu} menuPos={activeMenu?.id === item.id ? { x: activeMenu.x, y: activeMenu.y } : null} isElectron={isElectron} />))}{items.length === 0 && (<div className="py-20 flex flex-col items-center justify-center text-slate-300"><UploadCloud size={64} strokeWidth={1} /><p className="mt-4 text-sm font-medium">暂无共享内容，开始发送吧</p></div>)}<div ref={scrollEndRef} /></div></div>
+      <div onScroll={() => activeMenu && setActiveMenu(null)} className="flex-1 overflow-y-auto p-4 sm:p-6 w-full"><div className="mx-auto flex flex-col gap-4">{items.map(item => (<MessageItem key={item.id} item={item} isMe={item.senderId === CLIENT_ID || item.senderId === 'DESKTOP' || item.senderId === 'CLIPBOARD_SYNC' || item.senderId === 'CLIPBOARD_IMAGE'} baseUrl={baseUrl} onDelete={() => handleDelete(item.id)} onRetry={() => handleRetry(item)} onPreview={(url, type) => setPreviewMedia({ url, type })} isMenuOpen={activeMenu?.id === item.id} onToggleMenu={handleToggleMenu} menuPos={activeMenu?.id === item.id ? { x: activeMenu.x, y: activeMenu.y } : null} isElectron={isElectron} />))}{items.length === 0 && (<div className="py-20 flex flex-col items-center justify-center text-slate-300"><UploadCloud size={64} strokeWidth={1} /><p className="mt-4 text-sm font-medium">暂无共享内容，开始发送吧</p></div>)}<div ref={scrollEndRef} /></div></div>
       <div className="bg-white border-t shrink-0 z-50 pb-safe"><BottomInput inputText={inputText} setInputText={setInputText} isMenuOpen={isMenuOpen} setIsMenuOpen={setIsMenuOpen} onSend={handleSendText} isMobile={isMobile} /><ActionPanel isOpen={isMenuOpen} isMobile={isMobile} isElectron={isElectron} onAction={handleActionClick} onNativeFolder={handleNativeFolderSelect} /></div>
       <input type="file" multiple ref={fileInputRef} onChange={(e) => e.target.files && Array.from(e.target.files).forEach(f => uploadFile(f))} className="hidden" />
       <input type="file" accept="image/*" ref={albumInputRef} onChange={(e) => e.target.files && Array.from(e.target.files).forEach(f => uploadFile(f))} className="hidden" />
@@ -274,7 +288,7 @@ export default function App() {
       {showQR && config && (<div className="fixed inset-0 z-[60] bg-black/60 backdrop-blur-sm flex items-center justify-center p-6" onClick={() => setShowQR(false)}><div className="bg-white p-8 rounded-[3rem] shadow-2xl text-center" onClick={e => e.stopPropagation()}><div className="bg-slate-50 p-6 rounded-[2rem] mb-4 border border-slate-100 shadow-inner"><img src={config.qr} alt="QR" className="w-56 h-56 mx-auto" /></div><code className="block mt-4 text-blue-600 bg-blue-50 px-4 py-2 rounded-2xl text-[10px] font-mono border border-blue-100 select-all">{config.url}</code></div></div>)}
       {showSettings && (<div className="fixed inset-0 z-[60] bg-black/60 backdrop-blur-sm flex items-center justify-center p-6" onClick={() => setShowSettings(false)}><div className="bg-white p-8 rounded-[2.5rem] shadow-2xl w-full max-w-md" onClick={e => e.stopPropagation()}><div className="flex justify-between items-center mb-6"><h2 className="text-xl font-bold text-slate-800">设置</h2><button onClick={() => setShowSettings(false)} className="p-2 hover:bg-slate-100 rounded-full"><X size={20} /></button></div><div className="space-y-6"><div><label className="block text-xs font-bold text-slate-400 uppercase mb-2">文件保存路径</label><div className="flex gap-2"><div className="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-xs text-slate-600 truncate">{downloadPath}</div><button onClick={async () => { const path = await (window as any).electronAPI.selectDownloadPath(); if (path) { setDownloadPath(path); showToast('保存路径已更新'); } }} className="p-2.5 bg-blue-50 text-blue-600 rounded-xl hover:bg-blue-100 transition-colors"><FolderOpen size={18} /></button></div></div></div></div></div>)}
       <ToastContainer toasts={toasts} />
-      {previewMedia && (<div className="fixed inset-0 z-[200] bg-black/95 backdrop-blur-xl flex items-center justify-center p-4" onClick={() => setPreviewMedia(null)}><button className="absolute top-6 right-6 text-white/50 hover:text-white transition-colors"><X size={32} /></button>{previewMedia.type === 'image' ? (<img src={previewMedia.url} className="max-w-full max-h-full object-contain shadow-2xl rounded-lg" alt="Preview" />) : (<div className="w-full max-w-4xl aspect-video bg-black rounded-2xl overflow-hidden shadow-2xl" onClick={e => e.stopPropagation()}><video src={previewMedia.url} controls autoPlay className="w-full h-full" /></div>)}</div>)}
+      {previewMedia && (<div className="fixed inset-0 z-[200] bg-black/95 backdrop-blur-xl flex items-center justify-center p-4" onClick={() => setPreviewMedia(null)}><button className="absolute top-6 right-6 text-white/50 hover:text-white transition-colors"><X size={32} /></button>{previewMedia.type === 'image' ? (<img src={previewMedia.url} className="max-w-full max-h-full object-contain shadow-2xl rounded-lg" alt="Preview" />) : (<div className="w-full aspect-video bg-black rounded-2xl overflow-hidden shadow-2xl" onClick={e => e.stopPropagation()}><video src={previewMedia.url} controls autoPlay className="w-full h-full" /></div>)}</div>)}
     </div>
   );
 }

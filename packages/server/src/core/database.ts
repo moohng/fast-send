@@ -1,5 +1,6 @@
-import * as fs from 'fs';
+import Database from 'better-sqlite3';
 import * as path from 'path';
+import * as fs from 'fs';
 
 export interface SharedItem {
     id: number;
@@ -14,54 +15,76 @@ export interface SharedItem {
 }
 
 class DataStore {
-    private items: SharedItem[];
+    private db: any; // better-sqlite3.Database
     private storagePath: string = '';
 
-    constructor() {
-        this.items = [];
-    }
+    constructor() {}
 
     public setStoragePath(p: string) {
-        this.storagePath = p;
-        const dir = path.dirname(p);
+        const dbPath = p.endsWith('.db') ? p : path.join(path.dirname(p), 'fast-send.db');
+        this.storagePath = dbPath;
+        const dir = path.dirname(dbPath);
         if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-        this.items = this._load();
+
+        this.db = new Database(dbPath);
+        this.init();
     }
 
-    private _load(): SharedItem[] {
-        try {
-            if (this.storagePath && fs.existsSync(this.storagePath)) {
-                return JSON.parse(fs.readFileSync(this.storagePath, 'utf8'));
-            }
-        } catch (e) { console.error(e); }
-        return [];
+    private init() {
+        this.db.exec(`
+            CREATE TABLE IF NOT EXISTS items (
+                id INTEGER PRIMARY KEY,
+                type TEXT NOT NULL,
+                content TEXT,
+                filename TEXT,
+                originalName TEXT,
+                size TEXT,
+                time TEXT NOT NULL,
+                fullTime TEXT NOT NULL,
+                senderId TEXT NOT NULL
+            )
+        `);
     }
 
-    private _save(): void {
-        try {
-            if (!this.storagePath) return;
-            fs.writeFileSync(this.storagePath, JSON.stringify(this.items, null, 2));
-        } catch (e) { console.error(e); }
+    public getAll(): SharedItem[] {
+        if (!this.db) return [];
+        return this.db.prepare('SELECT * FROM items ORDER BY id DESC LIMIT 100').all() as SharedItem[];
     }
-
-    public getAll(): SharedItem[] { return this.items; }
 
     public add(item: Omit<SharedItem, 'id'>): SharedItem {
-        const newItem = { ...item, id: Date.now() + Math.floor(Math.random() * 1000) };
-        this.items.unshift(newItem);
-        if (this.items.length > 100) this.items.pop();
-        this._save();
-        return newItem;
+        if (!this.db) throw new Error('Database not initialized');
+        
+        const id = Date.now() + Math.floor(Math.random() * 1000);
+        const stmt = this.db.prepare(`
+            INSERT INTO items (id, type, content, filename, originalName, size, time, fullTime, senderId)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `);
+        
+        stmt.run(
+            id,
+            item.type,
+            item.content || null,
+            item.filename || null,
+            item.originalName || null,
+            item.size || null,
+            item.time,
+            item.fullTime,
+            item.senderId
+        );
+
+        return { ...item, id };
     }
 
     public remove(id: number): boolean {
-        const initialLength = this.items.length;
-        this.items = this.items.filter(i => i.id !== id);
-        if (this.items.length !== initialLength) { this._save(); return true; }
-        return false;
+        if (!this.db) return false;
+        const result = this.db.prepare('DELETE FROM items WHERE id = ?').run(id);
+        return result.changes > 0;
     }
 
-    public clear(): void { this.items = []; this._save(); }
+    public clear(): void {
+        if (!this.db) return;
+        this.db.prepare('DELETE FROM items').run();
+    }
 }
 
 export const db = new DataStore();
