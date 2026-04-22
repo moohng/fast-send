@@ -32,8 +32,8 @@ export const ActionPanel: React.FC<ActionPanelProps> = ({ isOpen, isMobile, isEl
         isOpen ? "max-h-[280px] opacity-100" : "max-h-0 opacity-0 pointer-events-none"
       }`}
     >
-      <div className="p-8 max-w-4xl mx-auto">
-        <div className={`grid gap-8 ${isMobile ? "grid-cols-4" : "grid-cols-2"}`}>
+      <div className="p-8 mx-auto">
+        <div className={`grid gap-8 grid-cols-4`}>
           <ActionButton icon={Paperclip} label="文件" onClick={() => onAction('file')} />
           {isMobile && (
             <>

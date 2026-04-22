@@ -28,9 +28,8 @@ export interface ServerInstance {
 
 const DEFAULT_PORT = 3000;
 const BASE_DIR = path.join(os.homedir(), '.fastsend');
-
-// 维护全局在线设备列表
-const activeDevices = new Map<string, { id: string, name: string, type: string, ip: string, lastSeen: number }>();
+const devicesByClientId = new Map<string, { id: string, name: string, type: string, ip: string, lastSocketId: string }>();
+const socketToClientId = new Map<string, string>();
 
 export async function startServer(port: number = DEFAULT_PORT, customBaseDir?: string): Promise<ServerInstance> {
     const finalBaseDir = customBaseDir || BASE_DIR;
@@ -50,74 +49,74 @@ export async function startServer(port: number = DEFAULT_PORT, customBaseDir?: s
 
     const storage = multer.diskStorage({
         destination: (req, file, cb) => cb(null, finalUploadDir),
-        filename: (req, file, cb) => cb(null, Date.now() + '-' + file.originalname)
+        filename: (req, file, cb) => {
+            // 修复中文文件名乱码：强制使用 Buffer 重新编码
+            const originalName = Buffer.from(file.originalname, 'latin1').toString('utf8');
+            cb(null, Date.now() + '-' + originalName);
+        }
     });
     const upload = multer({ storage: storage });
 
-    const broadcastDevices = () => {
-        io.emit('devices-update', Array.from(activeDevices.values()));
-    };
+    const broadcastDevices = () => io.emit('devices-update', Array.from(devicesByClientId.values()));
 
     io.on('connection', (socket) => {
         socket.on('register', (data) => {
+            const clientId = data.id || socket.id;
             const userAgent = socket.handshake.headers['user-agent'] || '';
             let deviceName = 'Web Device';
             if (userAgent.includes('iPhone')) deviceName = 'iPhone';
             else if (userAgent.includes('Android')) deviceName = 'Android';
             else if (userAgent.includes('Windows')) deviceName = 'Windows PC';
+            else if (userAgent.includes('Macintosh')) deviceName = 'Mac';
             
-            activeDevices.set(socket.id, {
-                id: data.id || socket.id,
-                name: deviceName,
-                type: data.type || 'web',
-                ip: socket.handshake.address,
-                lastSeen: Date.now()
+            const oldInfo = devicesByClientId.get(clientId);
+            if (oldInfo) socketToClientId.delete(oldInfo.lastSocketId);
+
+            devicesByClientId.set(clientId, {
+                id: clientId, name: deviceName, type: data.type || 'web',
+                ip: socket.handshake.address.replace('::ffff:', ''), lastSocketId: socket.id
             });
+            socketToClientId.set(socket.id, clientId);
             broadcastDevices();
         });
 
         socket.on('disconnect', () => {
-            activeDevices.delete(socket.id);
-            broadcastDevices();
+            const clientId = socketToClientId.get(socket.id);
+            if (clientId) {
+                const deviceInfo = devicesByClientId.get(clientId);
+                if (deviceInfo && deviceInfo.lastSocketId === socket.id) {
+                    setTimeout(() => {
+                        const currentInfo = devicesByClientId.get(clientId);
+                        if (currentInfo && currentInfo.lastSocketId === socket.id) {
+                            devicesByClientId.delete(clientId);
+                            socketToClientId.delete(socket.id);
+                            broadcastDevices();
+                        }
+                    }, 2000);
+                } else socketToClientId.delete(socket.id);
+            }
         });
     });
 
-    // 定期清理过期设备 (心跳检查)
-    setInterval(() => {
-        const now = Date.now();
-        let changed = false;
-        for (const [id, dev] of activeDevices.entries()) {
-            if (now - dev.lastSeen > 30000) { // 30秒无响应视为离线
-                activeDevices.delete(id);
-                changed = true;
-            }
-        }
-        if (changed) broadcastDevices();
-    }, 10000);
-
     app.get('/api/config', async (req: Request, res: Response) => {
         const localIP = getLocalIP();
-        const url = `http://${localIP}:${port}`;
-        const qrDataUrl = await QRCode.toDataURL(url);
-        res.json({ ip: localIP, url: url, qr: qrDataUrl });
+        res.json({ ip: localIP, url: `http://${localIP}:${port}`, qr: await QRCode.toDataURL(`http://${localIP}:${port}`) });
     });
 
     app.get('/api/items', (req: Request, res: Response) => res.json(db.getAll()));
 
     app.post('/api/text', (req: Request, res: Response) => {
-        const { content, senderId } = req.body;
-        const item = db.add({ 
-            type: 'text', content, senderId: String(senderId), 
-            time: new Date().toLocaleTimeString(), fullTime: new Date().toISOString()
-        });
+        const item = db.add({ type: 'text', content: req.body.content, senderId: String(req.body.senderId), time: new Date().toLocaleTimeString(), fullTime: new Date().toISOString() });
         io.emit('new-item', item);
         res.json(item);
     });
 
     app.post('/api/upload', upload.single('file'), (req: Request, res: Response) => {
         if (!req.file) return res.status(400).send();
+        // 同样在存入数据库前修复文件名
+        const fixedOriginalName = Buffer.from(req.file.originalname, 'latin1').toString('utf8');
         const item = db.add({
-            type: 'file', filename: req.file.filename, originalName: req.file.originalname,
+            type: 'file', filename: req.file.filename, originalName: fixedOriginalName,
             size: (req.file.size / 1024 / 1024).toFixed(2) + ' MB',
             senderId: String(req.body.senderId), time: new Date().toLocaleTimeString(), fullTime: new Date().toISOString()
         });
@@ -132,10 +131,8 @@ export async function startServer(port: number = DEFAULT_PORT, customBaseDir?: s
             const filePath = path.join(finalUploadDir, item.filename);
             if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
         }
-        if (db.remove(id)) {
-            io.emit('item-removed', id);
-            res.json({ success: true });
-        } else res.status(404).send();
+        if (db.remove(id)) { io.emit('item-removed', id); res.json({ success: true }); }
+        else res.status(404).send();
     });
 
     return new Promise((resolve, reject) => {
@@ -147,6 +144,4 @@ export async function startServer(port: number = DEFAULT_PORT, customBaseDir?: s
     });
 }
 
-if (process.env.START_SERVER === 'true') {
-    startServer().catch(console.error);
-}
+if (process.env.START_SERVER === 'true') startServer().catch(console.error);

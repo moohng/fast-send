@@ -1,6 +1,14 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Copy, Download, Trash2, Laptop, Smartphone, FileText, Image as ImageIcon, Video, FileArchive, Loader2, Play, Check, MoreVertical } from 'lucide-react';
+import { Copy, Download, Trash2, Laptop, Smartphone, FileText, Image as ImageIcon, Video, FileArchive, Loader2, Play, Check, MoreVertical, FolderOpen } from 'lucide-react';
 import { SharedItem } from '../types';
+
+export const getFileIcon = (n: string = '') => {
+  const e = n.split('.').pop()?.toLowerCase();
+  if (['jpg', 'jpeg', 'png', 'gif', 'webp', 'heic'].includes(e!)) return <ImageIcon size={20} />;
+  if (['mp4', 'mov', 'avi', 'mkv', 'webm'].includes(e!)) return <Video size={20} />;
+  if (['zip', 'rar', '7z', 'tar'].includes(e!)) return <FileArchive size={20} />;
+  return <FileText size={20} />;
+};
 
 interface Props {
   item: SharedItem;
@@ -11,9 +19,10 @@ interface Props {
   isMenuOpen: boolean;
   onToggleMenu: (id: number | null, rect?: DOMRect) => void;
   menuPos: { x: number, y: number } | null;
+  isElectron?: boolean;
 }
 
-export const MessageItem: React.FC<Props> = ({ item, isMe, baseUrl, onDelete, onPreview, isMenuOpen, onToggleMenu, menuPos }) => {
+export const MessageItem: React.FC<Props> = ({ item, isMe, baseUrl, onDelete, onPreview, isMenuOpen, onToggleMenu, menuPos, isElectron }) => {
   const [copied, setCopied] = useState(false);
   const menuBtnRef = useRef<HTMLButtonElement>(null);
   
@@ -46,9 +55,17 @@ export const MessageItem: React.FC<Props> = ({ item, isMe, baseUrl, onDelete, on
     }
   };
 
+  const handleShowInFolder = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (isElectron && item.filename) {
+      (window as any).electronAPI.showItemInFolder(item.filename);
+      onToggleMenu(null);
+    }
+  };
+
   return (
     <div className={`flex flex-col w-full ${isMe ? "items-end" : "items-start"}`}>
-      <div className={`flex max-w-[95%] sm:max-w-[85%] group gap-2 ${isMe ? "flex-row-reverse" : "flex-row"}`}>
+      <div className={`flex max-w-[95%] sm:max-w-[480px] group gap-2 ${isMe ? "flex-row-reverse" : "flex-row"}`}>
         <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 shadow-sm mt-1 border ${isMe ? "bg-blue-50 border-blue-100" : "bg-white border-slate-200"}`}>
           {isMe ? <Laptop size={14} className="text-blue-600" /> : <Smartphone size={14} className="text-slate-500" />}
         </div>
@@ -98,11 +115,22 @@ export const MessageItem: React.FC<Props> = ({ item, isMe, baseUrl, onDelete, on
             {copied ? <Check size={16} className="text-green-500" /> : <Copy size={16} className="text-slate-400" />}
             <span className="font-medium">复制内容</span>
           </button>
-          {item.type === 'file' && (
+          
+          {/* 桌面端特有：定位文件 */}
+          {item.type === 'file' && isElectron && (
+            <button onClick={handleShowInFolder} className="w-full px-4 py-2 text-left text-sm hover:bg-blue-50 flex items-center gap-3 text-slate-700 transition-colors">
+              <FolderOpen size={16} className="text-slate-400" />
+              <span className="font-medium">定位文件</span>
+            </button>
+          )}
+
+          {/* 非桌面端：下载文件 */}
+          {item.type === 'file' && !isElectron && (
             <a href={downloadUrl} download={item.originalName} className="w-full px-4 py-2 text-left text-sm hover:bg-blue-50 flex items-center gap-3 text-slate-700 transition-colors no-underline">
               <Download size={16} className="text-slate-400" /><span className="font-medium">下载文件</span>
             </a>
           )}
+
           <div className="h-px bg-slate-100 my-1 mx-2" />
           <button onClick={() => { onDelete(item.id); onToggleMenu(null); }} className="w-full px-4 py-2 text-left text-sm hover:bg-rose-50 flex items-center gap-3 text-rose-500 transition-colors">
             <Trash2 size={16} className="opacity-70" /><span className="font-medium">删除记录</span>

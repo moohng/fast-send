@@ -19,7 +19,9 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const store = new Store();
+// 桌面端存储路径：优先使用设置的下载目录
 let downloadPath = store.get('downloadPath') as string || path.join(app.getPath('downloads'), 'FastSend');
+if (!fs.existsSync(downloadPath)) fs.mkdirSync(downloadPath, { recursive: true });
 
 const isDev = !app.isPackaged;
 
@@ -28,13 +30,14 @@ let tray: Tray | null = null;
 let serverInstance: ServerInstance | null = null;
 let serverConfig: any = null;
 
+// 状态管理
 let isClipboardSyncEnabled = store.get('isClipboardSyncEnabled') as boolean || false;
 let isAutoWriteClipboard = store.get('isAutoWriteClipboard') as boolean || false;
 let isImageClipboardSyncEnabled = store.get('isImageClipboardSyncEnabled') as boolean || false;
 
 let lastClipboardText = '';
 let lastImageHash = '';
-let lastNotificationId = 0; // 用于通知去重
+let lastNotificationId = 0;
 
 async function findPort(startPort: number): Promise<number> {
     return new Promise((resolve) => {
@@ -85,8 +88,8 @@ function startClipboardMonitor() {
 async function startBackend() {
     try {
         const port = await findPort(3000);
-        const baseDir = path.join(os.homedir(), '.fastsend');
-        serverInstance = await startServer(port, baseDir);
+        // 使用 downloadPath 作为 Server 的存储目录
+        serverInstance = await startServer(port, path.dirname(downloadPath));
         
         serverInstance.io.on('connection', (socket) => {
             socket.on('register', () => {
@@ -98,7 +101,6 @@ async function startBackend() {
         serverInstance.io.emit = (event: string, ...args: any[]) => {
             if (event === 'new-item') {
                 const item = args[0];
-                // 增加通知去重判断，且只有非本地发送的消息才通知
                 if (isAutoWriteClipboard && item.id !== lastNotificationId) {
                     lastNotificationId = item.id;
                     if (item.type === 'text' && !['CLIPBOARD_SYNC', 'DESKTOP'].includes(item.senderId)) {
@@ -135,13 +137,16 @@ function createWindow() {
         },
         title: 'FastSend', show: false
     });
+
     if (isDev) mainWindow.loadURL('http://localhost:5173');
     else mainWindow.loadFile(path.join(__dirname, '../packages/client/dist/index.html'));
+
     mainWindow.once('ready-to-show', () => {
         mainWindow?.show();
         if (serverConfig) mainWindow?.webContents.send('server-config', serverConfig);
     });
 
+    // IPC 注册
     ipcMain.on('request-server-config', (event) => {
         if (serverConfig) {
             serverConfig.ip = getLocalIP();
@@ -160,7 +165,6 @@ function createWindow() {
     ipcMain.on('toggle-clipboard-sync', (event, enabled) => {
         isClipboardSyncEnabled = enabled;
         store.set('isClipboardSyncEnabled', enabled);
-        if (enabled) lastClipboardText = clipboard.readText();
         updateTray();
     });
 
@@ -173,10 +177,6 @@ function createWindow() {
     ipcMain.on('toggle-image-clipboard-sync', (event, enabled) => {
         isImageClipboardSyncEnabled = enabled;
         store.set('isImageClipboardSyncEnabled', enabled);
-        if (enabled) {
-            const img = clipboard.readImage();
-            if (!img.isEmpty()) lastImageHash = crypto.createHash('md5').update(img.toPNG()).digest('hex');
-        }
         updateTray();
     });
 
@@ -195,6 +195,18 @@ function createWindow() {
         if (fs.existsSync(target)) shell.openPath(target);
     });
 
+    ipcMain.on('show-item-in-folder', (event, fileName) => {
+        let fullPath = path.join(downloadPath, fileName);
+        if (!fs.existsSync(fullPath)) {
+            fullPath = path.join(os.homedir(), '.fastsend', 'uploads', fileName);
+        }
+        if (fs.existsSync(fullPath)) {
+            shell.showItemInFolder(fullPath);
+        } else {
+            new Notification({ title: 'FastSend', body: `无法定位文件: 文件可能已被移动或删除` }).show();
+        }
+    });
+
     ipcMain.handle('check-is-directory', async (event, p: string) => {
         try { return fs.statSync(p).isDirectory(); } catch (e) { return false; }
     });
@@ -209,7 +221,7 @@ function createWindow() {
             output.on('close', () => {
                 const stats = fs.statSync(zipPath);
                 const newItem = db.add({
-                    type: 'file', filename: zipName,
+                    id: Date.now(), type: 'file', filename: zipName,
                     originalName: `${folderName}.zip`, size: (stats.size / 1024 / 1024).toFixed(2) + ' MB',
                     senderId: 'DESKTOP', time: new Date().toLocaleTimeString(), fullTime: new Date().toISOString()
                 });

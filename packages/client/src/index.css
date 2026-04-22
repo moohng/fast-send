@@ -1,3 +1,25 @@
-﻿@tailwind base;
+@tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+@layer base {
+  /* 隐藏所有元素的默认滚动条 */
+  * {
+    scrollbar-width: none; /* Firefox */
+    -ms-overflow-style: none; /* IE/Edge */
+  }
+
+  /* Chrome, Safari and Opera */
+  *::-webkit-scrollbar {
+    display: none;
+  }
+
+  body {
+    @apply bg-slate-50 antialiased overflow-hidden;
+  }
+}
+
+/* 即使隐藏了滚动条，依然保留滚动功能 */
+.overflow-y-auto {
+  -webkit-overflow-scrolling: touch;
+}

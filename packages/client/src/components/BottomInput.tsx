@@ -36,7 +36,7 @@ export const BottomInput: React.FC<BottomInputProps> = ({
   };
 
   return (
-    <div className="p-4 flex items-end gap-3 max-w-4xl mx-auto w-full">
+    <div className="p-4 flex items-end gap-3 mx-auto w-full">
       <button 
         onClick={() => setIsMenuOpen(!isMenuOpen)} 
         className={`w-12 h-12 flex items-center justify-center rounded-full transition-all shrink-0 ${isMenuOpen ? "bg-slate-800 text-white rotate-45" : "bg-slate-100 text-slate-600 hover:bg-slate-200"}`}
