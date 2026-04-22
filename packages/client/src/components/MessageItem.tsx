@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Copy, Download, Trash2, Laptop, Smartphone, FileText, Image as ImageIcon, Video, FileArchive, Loader2, Play, Check, MoreVertical, FolderOpen } from 'lucide-react';
 import { SharedItem } from '../types';
+import { Capacitor } from '@capacitor/core';
+import { Clipboard } from '@capacitor/clipboard';
 
 export const getFileIcon = (n: string = '') => {
   const e = n.split('.').pop()?.toLowerCase();
@@ -35,7 +37,13 @@ export const MessageItem: React.FC<Props> = ({ item, isMe, baseUrl, onDelete, on
   const handleCopy = useCallback(async (e: React.MouseEvent) => {
     e.stopPropagation();
     try {
-      await navigator.clipboard.writeText(contentToCopy || '');
+      if (Capacitor.isNativePlatform()) {
+        await Clipboard.write({
+          string: contentToCopy || ''
+        });
+      } else {
+        await navigator.clipboard.writeText(contentToCopy || '');
+      }
       setCopied(true);
       setTimeout(() => {
         setCopied(false);
@@ -124,8 +132,8 @@ export const MessageItem: React.FC<Props> = ({ item, isMe, baseUrl, onDelete, on
             </button>
           )}
 
-          {/* 非桌面端：下载文件 */}
-          {item.type === 'file' && !isElectron && (
+          {/* 只有在非桌面端且非原生 App 环境下才显示下载按钮 */}
+          {item.type === 'file' && !isElectron && !Capacitor.isNativePlatform() && (
             <a href={downloadUrl} download={item.originalName} className="w-full px-4 py-2 text-left text-sm hover:bg-blue-50 flex items-center gap-3 text-slate-700 transition-colors no-underline">
               <Download size={16} className="text-slate-400" /><span className="font-medium">下载文件</span>
             </a>

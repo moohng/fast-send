@@ -7,13 +7,16 @@
     "dev": "vite",
     "build": "tsc && vite build",
     "build:mobile": "npm run build && npx cap sync",
-    "build:sync": "npx cap sync android",
+    "sync": "npx cap sync android",
     "android:open": "npx cap open android",
     "preview": "vite preview",
     "check": "tsc --noEmit"
   },
   "dependencies": {
+    "@capacitor/app": "8.1.0",
+    "@capacitor/clipboard": "8.0.1",
     "@capacitor/core": "8.3.1",
+    "@capacitor/filesystem": "8.1.2",
     "@capacitor/network": "8.0.1",
     "clsx": "^2.1.1",
     "cordova-plugin-zeroconf": "1.4.2",

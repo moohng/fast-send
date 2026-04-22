@@ -12,6 +12,7 @@ import { useItems } from './hooks/useItems';
 import { useUpload } from './hooks/useUpload';
 import { useDiscovery } from './hooks/useDiscovery';
 import { RefreshCw } from 'lucide-react';
+import { App as CapApp } from '@capacitor/app';
 
 const CLIENT_ID = (() => {
   let id = localStorage.getItem('fast_send_client_id');
@@ -169,10 +170,37 @@ export default function App() {
     }
   };
 
+  const lastBackPressTime = useRef<number>(0);
+
   useEffect(() => {
-    const handleGlobalClick = () => setActiveMenu(null);
-    if (activeMenu) { window.addEventListener('click', handleGlobalClick); return () => window.removeEventListener('click', handleGlobalClick); }
-  }, [activeMenu]);
+    // 处理安卓物理返回键
+    const backHandler = CapApp.addListener('backButton', ({ canGoBack }) => {
+      if (previewMedia) {
+        setPreviewMedia(null);
+      } else if (showQR) {
+        setShowQR(false);
+      } else if (showSettings) {
+        setShowSettings(false);
+      } else if (isMenuOpen) {
+        setIsMenuOpen(false);
+      } else if (activeMenu) {
+        setActiveMenu(null);
+      } else {
+        // “再按一次退出应用”逻辑
+        const now = Date.now();
+        if (now - lastBackPressTime.current < 2000) {
+          CapApp.exitApp();
+        } else {
+          lastBackPressTime.current = now;
+          showToast('再按一次退出应用', 'info');
+        }
+      }
+    });
+
+    return () => {
+      backHandler.then(h => h.remove());
+    };
+  }, [previewMedia, showQR, showSettings, isMenuOpen, activeMenu]);
 
   return (
     <div className="h-screen bg-slate-50 flex flex-col font-sans text-slate-900 selection:bg-blue-100 selection:text-blue-700 overflow-hidden relative" onDragEnter={handleDragEnter} onDragOver={e => e.preventDefault()} onDragLeave={handleDragLeave} onDrop={handleDrop}>
