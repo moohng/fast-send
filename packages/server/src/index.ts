@@ -34,9 +34,11 @@ const socketToClientId = new Map<string, string>();
 export async function startServer(port: number = DEFAULT_PORT, customBaseDir?: string): Promise<ServerInstance> {
     const finalBaseDir = customBaseDir || BASE_DIR;
     const finalUploadDir = path.join(finalBaseDir, 'uploads');
+    const finalChunkDir = path.join(finalBaseDir, 'chunks'); // 分片临时目录
     const finalDbPath = path.join(finalBaseDir, 'database.json');
 
     if (!fs.existsSync(finalUploadDir)) fs.mkdirSync(finalUploadDir, { recursive: true });
+    if (!fs.existsSync(finalChunkDir)) fs.mkdirSync(finalChunkDir, { recursive: true });
     setStoragePath(finalDbPath);
 
     const app = express();
@@ -47,15 +49,104 @@ export async function startServer(port: number = DEFAULT_PORT, customBaseDir?: s
     app.use(express.json());
     app.use('/download', express.static(finalUploadDir));
 
-    const storage = multer.diskStorage({
-        destination: (req, file, cb) => cb(null, finalUploadDir),
-        filename: (req, file, cb) => {
-            // 修复中文文件名乱码：强制使用 Buffer 重新编码
-            const originalName = Buffer.from(file.originalname, 'latin1').toString('utf8');
-            cb(null, Date.now() + '-' + originalName);
+    // Multer 配置用于接收分片
+    const chunkStorage = multer.diskStorage({
+        destination: (req, file, cb) => {
+            const hash = req.body.hash;
+            const dir = path.join(finalChunkDir, hash);
+            if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+            cb(null, dir);
+        },
+        filename: (req, file, cb) => cb(null, req.body.index) // 分片以索引命名
+    });
+    const uploadChunk = multer({ storage: chunkStorage });
+
+    // 1. 接收分片接口
+    app.post('/api/upload/chunk', uploadChunk.single('chunk'), (req: Request, res: Response) => {
+        res.json({ success: true });
+    });
+
+    // 2. 合并分片接口
+    app.post('/api/upload/merge', async (req: Request, res: Response) => {
+        const { hash, fileName, total, senderId } = req.body;
+        const chunkDir = path.join(finalChunkDir, hash);
+        const fixedFileName = Buffer.from(fileName, 'latin1').toString('utf8');
+        const finalFileName = `${Date.now()}-${fixedFileName}`;
+        const finalFilePath = path.join(finalUploadDir, finalFileName);
+
+        if (!fs.existsSync(chunkDir)) return res.status(400).json({ error: 'Chunks not found' });
+
+        const writeStream = fs.createWriteStream(finalFilePath);
+        
+        // 递归流式合并，保证顺序
+        const mergeChunks = async (index: number) => {
+            if (index === total) {
+                writeStream.end();
+                return;
+            }
+            const chunkPath = path.join(chunkDir, String(index));
+            const readStream = fs.createReadStream(chunkPath);
+            
+            return new Promise<void>((resolve, reject) => {
+                readStream.pipe(writeStream, { end: false });
+                readStream.on('end', () => {
+                    fs.unlinkSync(chunkPath); // 合并后删除旧分片
+                    resolve();
+                });
+                readStream.on('error', reject);
+            }).then(() => mergeChunks(index + 1));
+        };
+
+        try {
+            await mergeChunks(0);
+            fs.rmdirSync(chunkDir); // 删除临时文件夹
+
+            const stats = fs.statSync(finalFilePath);
+            const item = db.add({
+                type: 'file', filename: finalFileName, originalName: fixedFileName,
+                size: (stats.size / 1024 / 1024).toFixed(2) + ' MB',
+                senderId: String(senderId), time: new Date().toLocaleTimeString(), fullTime: new Date().toISOString()
+            });
+            io.emit('new-item', item);
+            res.json(item);
+        } catch (err) {
+            console.error('Merge error:', err);
+            res.status(500).json({ error: 'Merge failed' });
         }
     });
-    const upload = multer({ storage: storage });
+
+    // 3. 检查分片状态 (用于断开续传)
+    app.get('/api/upload/check/:hash', (req: Request, res: Response) => {
+        const chunkDir = path.join(finalChunkDir, req.params.hash);
+        if (fs.existsSync(chunkDir)) {
+            const chunks = fs.readdirSync(chunkDir).map(Number).sort((a, b) => a - b);
+            res.json({ uploaded: chunks });
+        } else {
+            res.json({ uploaded: [] });
+        }
+    });
+
+    // (原有的 text 和 delete 接口保持不变)
+    app.get('/api/config', async (req: Request, res: Response) => {
+        const localIP = getLocalIP();
+        res.json({ ip: localIP, url: `http://${localIP}:${port}`, qr: await QRCode.toDataURL(`http://${localIP}:${port}`) });
+    });
+    app.get('/api/items', (req: Request, res: Response) => res.json(db.getAll()));
+    app.post('/api/text', (req: Request, res: Response) => {
+        const item = db.add({ type: 'text', content: req.body.content, senderId: String(req.body.senderId), time: new Date().toLocaleTimeString(), fullTime: new Date().toISOString() });
+        io.emit('new-item', item);
+        res.json(item);
+    });
+    app.delete('/api/items/:id', (req: Request, res: Response) => {
+        const id = parseInt(req.params.id);
+        const item = db.getAll().find(i => i.id === id);
+        if (item && item.type === 'file' && item.filename) {
+            const filePath = path.join(finalUploadDir, item.filename);
+            if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+        }
+        if (db.remove(id)) { io.emit('item-removed', id); res.json({ success: true }); }
+        else res.status(404).send();
+    });
 
     const broadcastDevices = () => io.emit('devices-update', Array.from(devicesByClientId.values()));
 
@@ -68,10 +159,8 @@ export async function startServer(port: number = DEFAULT_PORT, customBaseDir?: s
             else if (userAgent.includes('Android')) deviceName = 'Android';
             else if (userAgent.includes('Windows')) deviceName = 'Windows PC';
             else if (userAgent.includes('Macintosh')) deviceName = 'Mac';
-            
             const oldInfo = devicesByClientId.get(clientId);
             if (oldInfo) socketToClientId.delete(oldInfo.lastSocketId);
-
             devicesByClientId.set(clientId, {
                 id: clientId, name: deviceName, type: data.type || 'web',
                 ip: socket.handshake.address.replace('::ffff:', ''), lastSocketId: socket.id
@@ -79,7 +168,6 @@ export async function startServer(port: number = DEFAULT_PORT, customBaseDir?: s
             socketToClientId.set(socket.id, clientId);
             broadcastDevices();
         });
-
         socket.on('disconnect', () => {
             const clientId = socketToClientId.get(socket.id);
             if (clientId) {
@@ -96,43 +184,6 @@ export async function startServer(port: number = DEFAULT_PORT, customBaseDir?: s
                 } else socketToClientId.delete(socket.id);
             }
         });
-    });
-
-    app.get('/api/config', async (req: Request, res: Response) => {
-        const localIP = getLocalIP();
-        res.json({ ip: localIP, url: `http://${localIP}:${port}`, qr: await QRCode.toDataURL(`http://${localIP}:${port}`) });
-    });
-
-    app.get('/api/items', (req: Request, res: Response) => res.json(db.getAll()));
-
-    app.post('/api/text', (req: Request, res: Response) => {
-        const item = db.add({ type: 'text', content: req.body.content, senderId: String(req.body.senderId), time: new Date().toLocaleTimeString(), fullTime: new Date().toISOString() });
-        io.emit('new-item', item);
-        res.json(item);
-    });
-
-    app.post('/api/upload', upload.single('file'), (req: Request, res: Response) => {
-        if (!req.file) return res.status(400).send();
-        // 同样在存入数据库前修复文件名
-        const fixedOriginalName = Buffer.from(req.file.originalname, 'latin1').toString('utf8');
-        const item = db.add({
-            type: 'file', filename: req.file.filename, originalName: fixedOriginalName,
-            size: (req.file.size / 1024 / 1024).toFixed(2) + ' MB',
-            senderId: String(req.body.senderId), time: new Date().toLocaleTimeString(), fullTime: new Date().toISOString()
-        });
-        io.emit('new-item', item);
-        res.json(item);
-    });
-
-    app.delete('/api/items/:id', (req: Request, res: Response) => {
-        const id = parseInt(req.params.id);
-        const item = db.getAll().find(i => i.id === id);
-        if (item && item.type === 'file' && item.filename) {
-            const filePath = path.join(finalUploadDir, item.filename);
-            if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
-        }
-        if (db.remove(id)) { io.emit('item-removed', id); res.json({ success: true }); }
-        else res.status(404).send();
     });
 
     return new Promise((resolve, reject) => {
