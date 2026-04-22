@@ -5,10 +5,13 @@ import { MessageItem } from './components/MessageItem';
 import { ToastContainer, Toast } from './components/ToastContainer';
 import { ActionPanel } from './components/ActionPanel';
 import { BottomInput } from './components/BottomInput';
+import { DebugConsole } from './components/DebugConsole';
 
 import { useSocket } from './hooks/useSocket';
 import { useItems } from './hooks/useItems';
 import { useUpload } from './hooks/useUpload';
+import { useDiscovery } from './hooks/useDiscovery';
+import { RefreshCw } from 'lucide-react';
 
 const CLIENT_ID = (() => {
   let id = localStorage.getItem('fast_send_client_id');
@@ -52,14 +55,19 @@ export default function App() {
   const { socket, devices } = useSocket(baseUrl, CLIENT_ID, isMobile, isElectron);
   const { items, setItems, fetchData, handleDelete } = useItems(baseUrl, socket, CLIENT_ID, showToast);
   const { uploadFile } = useUpload(baseUrl, CLIENT_ID, setItems, showToast);
+  const { scan, isScanning } = useDiscovery(baseUrl, setBaseUrl, fetchData, showToast);
 
   useEffect(() => { scrollToBottom(); }, [items.length]);
 
   useEffect(() => {
     if (!baseUrl) return;
+    console.log('[App] Config fetching from:', baseUrl);
     const fetchConfig = async () => {
       try {
-        const response = await fetch(`${baseUrl}/api/config?url=${baseUrl}`);
+        const response = await fetch(`${baseUrl}/api/config?url=${baseUrl}`, {
+          mode: 'cors',
+          headers: { 'Accept': 'application/json' }
+        });
         const c = await response.json(); 
         setConfig(c); 
         if (c.downloadPath) setDownloadPath(c.downloadPath);
@@ -71,8 +79,9 @@ export default function App() {
   useEffect(() => {
     const initUrl = async () => {
       let url = '';
-      if (isElectron) url = await (window as any).electronAPI.getServerUrl();
-      else url = `${window.location.protocol}//${window.location.hostname}:3000`;
+      if (isElectron) url = (await (window as any).electronAPI.getServerUrl()) || '';
+      else url = `http://${window.location.hostname}:3000`;
+      console.log('[App] Initial URL:', url);
       setBaseUrl(url); 
       localStorage.setItem('fast_send_last_url', url);
     };
@@ -164,7 +173,17 @@ export default function App() {
           <div className="w-10 h-10 bg-blue-600 rounded-2xl flex items-center justify-center shadow-lg rotate-3"><UploadCloud className="text-white" size={24} strokeWidth={2.5} /></div>
           <div><h1 className="text-lg font-black tracking-tight text-slate-800">FastSend</h1><div className="flex items-center gap-1.5"><span className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse" /><p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{devices.length} 设备在线</p></div></div>
         </div>
-        <div className="flex gap-2"><button onClick={() => setShowQR(true)} className="p-2.5 bg-slate-100 hover:bg-blue-50 text-slate-600 hover:text-blue-600 rounded-xl transition-all"><QrCode size={20} /></button>{isElectron && <button onClick={() => setShowSettings(true)} className="p-2.5 bg-slate-100 hover:bg-blue-50 text-slate-600 hover:text-blue-600 rounded-xl transition-all"><Settings size={20} /></button>}</div>
+        <div className="flex gap-2">
+          <button onClick={() => scan()} className={`p-2.5 bg-slate-100 hover:bg-blue-50 text-slate-600 hover:text-blue-600 rounded-xl transition-all ${isScanning ? "animate-spin" : ""}`}>
+            <RefreshCw size={20} />
+          </button>
+          <button onClick={() => setShowQR(true)} className="p-2.5 bg-slate-100 hover:bg-blue-50 text-slate-600 hover:text-blue-600 rounded-xl transition-all">
+            <QrCode size={20} />
+          </button>
+          <button onClick={() => setShowSettings(true)} className="p-2.5 bg-slate-100 hover:bg-blue-50 text-slate-600 hover:text-blue-600 rounded-xl transition-all">
+            <Settings size={20} />
+          </button>
+        </div>
       </div>
       <div onScroll={() => activeMenu && setActiveMenu(null)} className="flex-1 overflow-y-auto p-4 sm:p-6 w-full"><div className="mx-auto flex flex-col gap-4">{items.map(item => (<MessageItem key={item.id} item={item} isMe={item.senderId === CLIENT_ID || item.senderId === 'DESKTOP' || item.senderId === 'CLIPBOARD_SYNC' || item.senderId === 'CLIPBOARD_IMAGE'} baseUrl={baseUrl} onDelete={() => handleDelete(item.id)} onPreview={(url, type) => setPreviewMedia({ url, type })} isMenuOpen={activeMenu?.id === item.id} onToggleMenu={handleToggleMenu} menuPos={activeMenu?.id === item.id ? { x: activeMenu.x, y: activeMenu.y } : null} isElectron={isElectron} />))}{items.length === 0 && (<div className="py-20 flex flex-col items-center justify-center text-slate-300"><UploadCloud size={64} strokeWidth={1} /><p className="mt-4 text-sm font-medium">暂无共享内容，开始发送吧</p></div>)}<div ref={scrollEndRef} /></div></div>
       <div className="bg-white border-t shrink-0 z-50 pb-safe"><BottomInput inputText={inputText} setInputText={setInputText} isMenuOpen={isMenuOpen} setIsMenuOpen={setIsMenuOpen} onSend={handleSendText} isMobile={isMobile} /><ActionPanel isOpen={isMenuOpen} isMobile={isMobile} isElectron={isElectron} onAction={handleActionClick} onNativeFolder={handleNativeFolderSelect} /></div>
@@ -172,9 +191,68 @@ export default function App() {
       <input type="file" accept="image/*" ref={albumInputRef} onChange={(e) => e.target.files && Array.from(e.target.files).forEach(f => uploadFile(f))} className="hidden" />
       <input type="file" accept="image/*" capture="environment" ref={cameraInputRef} onChange={(e) => e.target.files && Array.from(e.target.files).forEach(f => uploadFile(f))} className="hidden" />
       <input type="file" accept="video/*" capture="environment" ref={videoInputRef} onChange={(e) => e.target.files && Array.from(e.target.files).forEach(f => uploadFile(f))} className="hidden" />
-      {showQR && config && (<div className="fixed inset-0 z-[60] bg-black/60 backdrop-blur-sm flex items-center justify-center p-6" onClick={() => setShowQR(false)}><div className="bg-white p-8 rounded-[3rem] shadow-2xl text-center" onClick={e => e.stopPropagation()}><div className="bg-slate-50 p-6 rounded-[2rem] mb-4 border border-slate-100 shadow-inner"><img src={config.qr} alt="QR" className="w-56 h-56 mx-auto" /></div><code className="block mt-4 text-blue-600 bg-blue-50 px-4 py-2 rounded-2xl text-[10px] font-mono border border-blue-100 select-all">{config.url}</code></div></div>)}
-      {showSettings && (<div className="fixed inset-0 z-[60] bg-black/60 backdrop-blur-sm flex items-center justify-center p-6" onClick={() => setShowSettings(false)}><div className="bg-white p-8 rounded-[2.5rem] shadow-2xl w-full max-w-md" onClick={e => e.stopPropagation()}><div className="flex justify-between items-center mb-6"><h2 className="text-xl font-bold text-slate-800">设置</h2><button onClick={() => setShowSettings(false)} className="p-2 hover:bg-slate-100 rounded-full"><X size={20} /></button></div><div className="space-y-6"><div><label className="block text-xs font-bold text-slate-400 uppercase mb-2">文件保存路径</label><div className="flex gap-2"><div className="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-xs text-slate-600 truncate">{downloadPath}</div><button onClick={async () => { const path = await (window as any).electronAPI.selectDownloadPath(); if (path) { setDownloadPath(path); showToast('保存路径已更新'); } }} className="p-2.5 bg-blue-50 text-blue-600 rounded-xl hover:bg-blue-100 transition-colors"><FolderOpen size={18} /></button></div></div></div></div></div>)}
+      {showQR && (
+        <div className="fixed inset-0 z-[60] bg-black/60 backdrop-blur-sm flex items-center justify-center p-6" onClick={() => setShowQR(false)}>
+          <div className="bg-white p-8 rounded-[3rem] shadow-2xl text-center w-full max-w-sm" onClick={e => e.stopPropagation()}>
+            {config ? (
+              <>
+                <div className="bg-slate-50 p-6 rounded-[2rem] mb-4 border border-slate-100 shadow-inner">
+                  <img src={config.qr} alt="QR" className="w-56 h-56 mx-auto" />
+                </div>
+                <code className="block mt-4 text-blue-600 bg-blue-50 px-4 py-2 rounded-2xl text-[10px] font-mono border border-blue-100 select-all">{config.url}</code>
+              </>
+            ) : (
+              <div className="py-10 text-slate-400">
+                <QrCode size={48} className="mx-auto mb-4 opacity-20" />
+                <p className="text-sm font-medium mb-4">尚未连接到服务器</p>
+                <button onClick={() => { setShowQR(false); setShowSettings(true); }} className="bg-blue-600 text-white px-6 py-2 rounded-2xl text-sm font-bold shadow-lg shadow-blue-200">手动输入 IP 连接</button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+      {showSettings && (
+        <div className="fixed inset-0 z-[60] bg-black/60 backdrop-blur-sm flex items-center justify-center p-6" onClick={() => setShowSettings(false)}>
+          <div className="bg-white p-8 rounded-[2.5rem] shadow-2xl w-full max-w-md" onClick={e => e.stopPropagation()}>
+            <div className="flex justify-between items-center mb-6">
+              <h2 className="text-xl font-bold text-slate-800">设置</h2>
+              <button onClick={() => setShowSettings(false)} className="p-2 hover:bg-slate-100 rounded-full"><X size={20} /></button>
+            </div>
+            <div className="space-y-6">
+              <div>
+                <label className="block text-xs font-bold text-slate-400 uppercase mb-2">服务器地址 (电脑 IP)</label>
+                <div className="flex gap-2">
+                  <input 
+                    type="text" 
+                    value={baseUrl} 
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setBaseUrl(val);
+                      localStorage.setItem('fast_send_last_url', val);
+                    }}
+                    placeholder="http://192.168.x.x:3000"
+                    className="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-xs text-slate-600 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                  <button onClick={() => { fetchData(); showToast('已尝试重新连接'); }} className="p-2.5 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-colors tracking-tighter text-[10px] font-bold">连接</button>
+                </div>
+                <p className="mt-2 text-[10px] text-slate-400 italic">请在电脑端 FastSend 顶部查看显示的 IP 地址</p>
+              </div>
+
+              {isElectron && (
+                <div>
+                  <label className="block text-xs font-bold text-slate-400 uppercase mb-2">文件保存路径</label>
+                  <div className="flex gap-2">
+                    <div className="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-xs text-slate-600 truncate">{downloadPath}</div>
+                    <button onClick={async () => { const path = await (window as any).electronAPI.selectDownloadPath(); if (path) { setDownloadPath(path); showToast('保存路径已更新'); } }} className="p-2.5 bg-blue-50 text-blue-600 rounded-xl hover:bg-blue-100 transition-colors"><FolderOpen size={18} /></button>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
       <ToastContainer toasts={toasts} />
+      <DebugConsole />
       {previewMedia && (<div className="fixed inset-0 z-[200] bg-black/95 backdrop-blur-xl flex items-center justify-center p-4" onClick={() => setPreviewMedia(null)}><button className="absolute top-6 right-6 text-white/50 hover:text-white transition-colors"><X size={32} /></button>{previewMedia.type === 'image' ? (<img src={previewMedia.url} className="max-w-full max-h-full object-contain shadow-2xl rounded-lg" alt="Preview" />) : (<div className="w-full aspect-video bg-black rounded-2xl overflow-hidden shadow-2xl" onClick={e => e.stopPropagation()}><video src={previewMedia.url} controls autoPlay className="w-full h-full" /></div>)}</div>)}
     </div>
   );

@@ -5,14 +5,20 @@ import { SharedItem } from '../types';
 export const useItems = (baseUrl: string, socket: Socket | null, clientId: string, showToast: (m: string, t?: any) => void) => {
   const [items, setItems] = useState<SharedItem[]>([]);
 
-  const fetchData = useCallback(async () => {
-    if (!baseUrl) return;
+  const fetchData = useCallback(async (newUrl?: string) => {
+    const targetUrl = newUrl || baseUrl;
+    if (!targetUrl) return;
+    console.log('[Items] Fetching from:', targetUrl);
     try {
-      const itemsRes = await fetch(`${baseUrl}/api/items`);
+      const itemsRes = await fetch(`${targetUrl}/api/items`, {
+        mode: 'cors',
+        headers: { 'Accept': 'application/json' }
+      });
       const i = await itemsRes.json();
+      console.log('[Items] Fetched:', i.length, 'items');
       setItems([...i].reverse());
-    } catch (e) {
-      console.error('Fetch items error:', e);
+    } catch (e: any) {
+      console.error('[Items] Fetch error:', e.message);
     }
   }, [baseUrl]);
 

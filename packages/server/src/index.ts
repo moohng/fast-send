@@ -14,6 +14,9 @@ import { fileURLToPath } from 'url';
 import { getLocalIP } from './utils/network.ts';
 import { db, setStoragePath } from './core/database.ts';
 import { discovery } from './core/discovery.ts';
+import { Bonjour } from 'bonjour-service';
+
+const bonjour = new Bonjour();
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -45,9 +48,17 @@ export async function startServer(port: number = DEFAULT_PORT, customBaseDir?: s
     const server = http.createServer(app);
     const io = new Server(server, { cors: { origin: "*" } });
 
-    app.use(cors());
+    app.use(cors({
+        origin: '*',
+        methods: ['GET', 'POST', 'DELETE', 'OPTIONS'],
+        allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+        credentials: true
+    }));
     app.use(express.json());
     app.use('/download', express.static(finalUploadDir));
+
+    // 处理 OPTIONS 预检请求
+    app.options('*', cors() as any);
 
     // Multer 配置用于接收分片
     const chunkStorage = multer.diskStorage({
@@ -192,7 +203,8 @@ export async function startServer(port: number = DEFAULT_PORT, customBaseDir?: s
         server.on('error', reject);
         server.listen(port, '0.0.0.0', () => {
             discovery.startBroadcasting(port, os.hostname());
-            resolve({ app, server, io, port, stop: () => { discovery.stop(); server.close(); } });
+            bonjour.publish({ name: `FastSend-${os.hostname()}`, type: 'fastsend', port, protocol: 'tcp' });
+            resolve({ app, server, io, port, stop: () => { discovery.stop(); bonjour.destroy(); server.close(); } });
         });
     });
 }
