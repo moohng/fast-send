@@ -37,8 +37,8 @@ export async function startServer(port: number = DEFAULT_PORT, customBaseDir?: s
     const finalChunkDir = path.join(finalBaseDir, 'chunks'); // 分片临时目录
     const finalDbPath = path.join(finalBaseDir, 'database.json');
 
-    if (!fs.existsSync(finalUploadDir)) fs.mkdirSync(finalUploadDir, { recursive: true });
-    if (!fs.existsSync(finalChunkDir)) fs.mkdirSync(finalChunkDir, { recursive: true });
+    if (!fs.existsSync(finalUploadDir)) await fs.promises.mkdir(finalUploadDir, { recursive: true });
+    if (!fs.existsSync(finalChunkDir)) await fs.promises.mkdir(finalChunkDir, { recursive: true });
     setStoragePath(finalDbPath);
 
     const app = express();
@@ -51,13 +51,17 @@ export async function startServer(port: number = DEFAULT_PORT, customBaseDir?: s
 
     // Multer 配置用于接收分片
     const chunkStorage = multer.diskStorage({
-        destination: (req, file, cb) => {
+        destination: async (req, file, cb) => {
             const hash = req.body.hash;
             const dir = path.join(finalChunkDir, hash);
-            if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-            cb(null, dir);
+            try {
+                if (!fs.existsSync(dir)) await fs.promises.mkdir(dir, { recursive: true });
+                cb(null, dir);
+            } catch (err: any) {
+                cb(err, dir);
+            }
         },
-        filename: (req, file, cb) => cb(null, req.body.index) // 分片以索引命名
+        filename: (req, file, cb) => cb(null, req.body.index) 
     });
     const uploadChunk = multer({ storage: chunkStorage });
 
@@ -74,34 +78,30 @@ export async function startServer(port: number = DEFAULT_PORT, customBaseDir?: s
         const finalFileName = `${Date.now()}-${fixedFileName}`;
         const finalFilePath = path.join(finalUploadDir, finalFileName);
 
-        if (!fs.existsSync(chunkDir)) return res.status(400).json({ error: 'Chunks not found' });
-
-        const writeStream = fs.createWriteStream(finalFilePath);
-        
-        // 递归流式合并，保证顺序
-        const mergeChunks = async (index: number) => {
-            if (index === total) {
-                writeStream.end();
-                return;
-            }
-            const chunkPath = path.join(chunkDir, String(index));
-            const readStream = fs.createReadStream(chunkPath);
-            
-            return new Promise<void>((resolve, reject) => {
-                readStream.pipe(writeStream, { end: false });
-                readStream.on('end', () => {
-                    fs.unlinkSync(chunkPath); // 合并后删除旧分片
-                    resolve();
-                });
-                readStream.on('error', reject);
-            }).then(() => mergeChunks(index + 1));
-        };
-
         try {
-            await mergeChunks(0);
-            fs.rmdirSync(chunkDir); // 删除临时文件夹
+            if (!fs.existsSync(chunkDir)) return res.status(400).json({ error: 'Chunks not found' });
 
-            const stats = fs.statSync(finalFilePath);
+            const writeStream = fs.createWriteStream(finalFilePath);
+            
+            // 顺序合并分片
+            for (let i = 0; i < total; i++) {
+                const chunkPath = path.join(chunkDir, String(i));
+                const readStream = fs.createReadStream(chunkPath);
+                
+                await new Promise<void>((resolve, reject) => {
+                    readStream.pipe(writeStream, { end: false });
+                    readStream.on('end', resolve);
+                    readStream.on('error', reject);
+                });
+                await fs.promises.unlink(chunkPath); // 异步删除分片
+            }
+            
+            writeStream.end();
+            await new Promise((resolve) => writeStream.on('finish', resolve));
+
+            await fs.promises.rm(chunkDir, { recursive: true, force: true }); // 异步删除目录
+
+            const stats = await fs.promises.stat(finalFilePath);
             const item = db.add({
                 type: 'file', filename: finalFileName, originalName: fixedFileName,
                 size: (stats.size / 1024 / 1024).toFixed(2) + ' MB',
@@ -111,15 +111,17 @@ export async function startServer(port: number = DEFAULT_PORT, customBaseDir?: s
             res.json(item);
         } catch (err) {
             console.error('Merge error:', err);
+            if (fs.existsSync(finalFilePath)) await fs.promises.unlink(finalFilePath).catch(() => {});
             res.status(500).json({ error: 'Merge failed' });
         }
     });
 
-    // 3. 检查分片状态 (用于断开续传)
-    app.get('/api/upload/check/:hash', (req: Request, res: Response) => {
+    // 3. 检查分片状态
+    app.get('/api/upload/check/:hash', async (req: Request, res: Response) => {
         const chunkDir = path.join(finalChunkDir, req.params.hash);
         if (fs.existsSync(chunkDir)) {
-            const chunks = fs.readdirSync(chunkDir).map(Number).sort((a, b) => a - b);
+            const files = await fs.promises.readdir(chunkDir);
+            const chunks = files.map(Number).sort((a, b) => a - b);
             res.json({ uploaded: chunks });
         } else {
             res.json({ uploaded: [] });
@@ -137,12 +139,12 @@ export async function startServer(port: number = DEFAULT_PORT, customBaseDir?: s
         io.emit('new-item', item);
         res.json(item);
     });
-    app.delete('/api/items/:id', (req: Request, res: Response) => {
+    app.delete('/api/items/:id', async (req: Request, res: Response) => {
         const id = parseInt(req.params.id);
         const item = db.getAll().find(i => i.id === id);
         if (item && item.type === 'file' && item.filename) {
             const filePath = path.join(finalUploadDir, item.filename);
-            if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+            if (fs.existsSync(filePath)) await fs.promises.unlink(filePath).catch(() => {});
         }
         if (db.remove(id)) { io.emit('item-removed', id); res.json({ success: true }); }
         else res.status(404).send();

@@ -1,12 +1,14 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { io, Socket } from 'socket.io-client';
-import { QrCode, X, UploadCloud, Settings, FolderOpen, Loader2 } from 'lucide-react';
-import SparkMD5 from 'spark-md5';
-import { SharedItem, Device, ServerConfig } from './types';
+import { QrCode, X, UploadCloud, Settings, FolderOpen } from 'lucide-react';
+import { SharedItem, ServerConfig } from './types';
 import { MessageItem } from './components/MessageItem';
 import { ToastContainer, Toast } from './components/ToastContainer';
 import { ActionPanel } from './components/ActionPanel';
 import { BottomInput } from './components/BottomInput';
+
+import { useSocket } from './hooks/useSocket';
+import { useItems } from './hooks/useItems';
+import { useUpload } from './hooks/useUpload';
 
 const CLIENT_ID = (() => {
   let id = localStorage.getItem('fast_send_client_id');
@@ -14,11 +16,7 @@ const CLIENT_ID = (() => {
   return id;
 })();
 
-const CHUNK_SIZE = 2 * 1024 * 1024;
-
 export default function App() {
-  const [items, setItems] = useState<SharedItem[]>([]);
-  const [devices, setDevices] = useState<Device[]>([]);
   const [config, setConfig] = useState<ServerConfig | null>(null);
   const [inputText, setInputText] = useState('');
   const [showQR, setShowQR] = useState(false);
@@ -35,7 +33,6 @@ export default function App() {
   const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
   const isElectron = !!(window as any).electronAPI;
 
-  const socketRef = useRef<Socket | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const albumInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
@@ -52,110 +49,35 @@ export default function App() {
     setTimeout(() => scrollEndRef.current?.scrollIntoView({ behavior: 'smooth' }), 100);
   };
 
+  const { socket, devices } = useSocket(baseUrl, CLIENT_ID, isMobile, isElectron);
+  const { items, setItems, fetchData, handleDelete } = useItems(baseUrl, socket, CLIENT_ID, showToast);
+  const { uploadFile } = useUpload(baseUrl, CLIENT_ID, setItems, showToast);
+
   useEffect(() => { scrollToBottom(); }, [items.length]);
 
-  const fetchData = async (url: string) => {
-    try {
-      const response = await fetch(`${url}/api/config?url=${url}`);
-      const c = await response.json(); 
-      setConfig(c); 
-      if (c.downloadPath) setDownloadPath(c.downloadPath);
-      const itemsRes = await fetch(`${url}/api/items`);
-      const i = await itemsRes.json(); 
-      setItems([...i].reverse()); 
-    } catch (e) { console.error('Fetch error:', e); }
-  };
-
-  const calculateHash = (file: File): Promise<string> => {
-    return new Promise((resolve) => {
-      const spark = new SparkMD5.ArrayBuffer();
-      const reader = new FileReader();
-      const slice = file.slice(0, Math.min(file.size, 5 * 1024 * 1024)); 
-      reader.readAsArrayBuffer(slice);
-      reader.onload = (e) => {
-        spark.append(e.target?.result as ArrayBuffer);
-        resolve(SparkMD5.hash(spark.end() + file.name + file.size));
-      };
-    });
-  };
-
-  const uploadFile = async (file: File) => {
+  useEffect(() => {
     if (!baseUrl) return;
-    const tempId = Date.now() + Math.random();
-    const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
+    const fetchConfig = async () => {
+      try {
+        const response = await fetch(`${baseUrl}/api/config?url=${baseUrl}`);
+        const c = await response.json(); 
+        setConfig(c); 
+        if (c.downloadPath) setDownloadPath(c.downloadPath);
+      } catch (e) { console.error('Config fetch error:', e); }
+    };
+    fetchConfig();
+  }, [baseUrl]);
 
-    setItems(p => [...p, { 
-      id: tempId, 
-      type: "file", 
-      originalName: file.name, 
-      size: (file.size / 1024 / 1024).toFixed(2) + " MB", 
-      time: new Date().toLocaleTimeString(), 
-      fullTime: new Date().toISOString(), 
-      senderId: CLIENT_ID, 
-      progress: 0
-    }]);
-
-    try {
-      const hash = await calculateHash(file);
-      const checkRes = await fetch(`${baseUrl}/api/upload/check/${hash}`);
-      const { uploaded } = await checkRes.json();
-      const uploadedSet = new Set<number>(uploaded);
-
-      let finishedChunks = uploadedSet.size;
-      const initialPct = Math.round((finishedChunks / totalChunks) * 100);
-      setItems(p => p.map(x => x.id === tempId ? { ...x, progress: initialPct } : x));
-
-      // 并发上传逻辑
-      const pool = new Set<Promise<void>>();
-      const MAX_CONCURRENT = 3;
-
-      for (let i = 0; i < totalChunks; i++) {
-        if (uploadedSet.has(i)) continue;
-
-        const start = i * CHUNK_SIZE;
-        const end = Math.min(file.size, start + CHUNK_SIZE);
-        const chunk = file.slice(start, end);
-
-        const formData = new FormData();
-        formData.append('hash', hash);
-        formData.append('index', String(i));
-        formData.append('fileName', file.name);
-        formData.append('chunk', chunk);
-
-        const task = (async () => {
-          const res = await fetch(`${baseUrl}/api/upload/chunk`, { method: 'POST', body: formData });
-          if (!res.ok) throw new Error('Chunk upload failed');
-          finishedChunks++;
-          const pct = Math.round((finishedChunks / totalChunks) * 100);
-          setItems(prev => prev.map(x => x.id === tempId ? { ...x, progress: pct } : x));
-        })();
-
-        pool.add(task);
-        task.finally(() => pool.delete(task));
-
-        if (pool.size >= MAX_CONCURRENT) {
-          await Promise.race(pool);
-        }
-      }
-      await Promise.all(pool);
-
-      const mergeRes = await fetch(`${baseUrl}/api/upload/merge`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ hash, fileName: file.name, total: totalChunks, senderId: CLIENT_ID })
-      });
-
-      if (mergeRes.ok) {
-        showToast('发送成功');
-        setItems(p => p.filter(x => x.id !== tempId));
-      } else throw new Error('Merge failed');
-    } catch (e) {
-      console.error(e);
-      showToast('上传中断', 'error');
-      setItems(p => p.map(x => x.id === tempId ? { ...x, status: 'error', progress: undefined } : x));
-    }
-  };
-
+  useEffect(() => {
+    const initUrl = async () => {
+      let url = '';
+      if (isElectron) url = await (window as any).electronAPI.getServerUrl();
+      else url = `${window.location.protocol}//${window.location.hostname}:3000`;
+      setBaseUrl(url); 
+      localStorage.setItem('fast_send_last_url', url);
+    };
+    initUrl();
+  }, [isElectron]);
 
   const handleActionClick = (type: string) => {
     setIsMenuOpen(false);
@@ -217,18 +139,6 @@ export default function App() {
     } catch (e) { showToast('发送失败', 'error'); setInputText(content); }
   };
 
-  const handleDelete = async (id: number) => {
-    try {
-      const res = await fetch(`${baseUrl}/api/items/${id}`, { method: 'DELETE' });
-      if (res.ok) { 
-        setItems(p => p.filter(x => x.id !== id)); 
-        showToast('已删除记录'); 
-      }
-    } catch (e) { 
-      showToast('删除失败', 'error'); 
-    }
-  };
-
   const handleToggleMenu = (id: number | null, rect?: DOMRect) => {
     if (id === null) setActiveMenu(null);
     else if (rect) {
@@ -246,29 +156,6 @@ export default function App() {
     if (activeMenu) { window.addEventListener('click', handleGlobalClick); return () => window.removeEventListener('click', handleGlobalClick); }
   }, [activeMenu]);
 
-  useEffect(() => {
-    const init = async () => {
-      let url = '';
-      if (isElectron) url = await (window as any).electronAPI.getServerUrl();
-      else url = `${window.location.protocol}//${window.location.hostname}:3000`;
-      setBaseUrl(url); 
-      localStorage.setItem('fast_send_last_url', url);
-      fetchData(url);
-      const socket = io(url);
-      socketRef.current = socket;
-      socket.on('connect', () => { socket.emit('register', { id: CLIENT_ID, type: isMobile ? 'mobile' : (isElectron ? 'desktop' : 'web') }); });
-      socket.on('devices-update', (data) => setDevices(data));
-      socket.on('new-item', (item) => {
-        setItems(p => p.some(x => x.id === item.id) ? p : [...p, item]);
-        if (item.senderId !== CLIENT_ID && !['CLIPBOARD_SYNC', 'CLIPBOARD_IMAGE'].includes(item.senderId)) showToast('收到新内容', 'info');
-      });
-      socket.on('item-removed', (id) => setItems(p => p.filter(x => x.id !== id)));
-      socket.on('items-cleared', () => setItems([]));
-    };
-    init();
-    return () => { if (socketRef.current) socketRef.current.close(); };
-  }, [isElectron, isMobile]);
-
   return (
     <div className="h-screen bg-slate-50 flex flex-col font-sans text-slate-900 selection:bg-blue-100 selection:text-blue-700 overflow-hidden relative" onDragEnter={handleDragEnter} onDragOver={e => e.preventDefault()} onDragLeave={handleDragLeave} onDrop={handleDrop}>
       {isDragging && <div className="absolute inset-0 z-[100] bg-blue-600/10 backdrop-blur-sm border-4 border-dashed border-blue-500/50 m-4 rounded-[2.5rem] flex flex-col items-center justify-center pointer-events-none transition-all animate-in fade-in duration-200"><UploadCloud size={80} className="text-blue-600 animate-bounce" /><p className="mt-4 text-blue-600 font-black text-xl">将文件/文件夹拖入此处</p></div>}
@@ -279,7 +166,7 @@ export default function App() {
         </div>
         <div className="flex gap-2"><button onClick={() => setShowQR(true)} className="p-2.5 bg-slate-100 hover:bg-blue-50 text-slate-600 hover:text-blue-600 rounded-xl transition-all"><QrCode size={20} /></button>{isElectron && <button onClick={() => setShowSettings(true)} className="p-2.5 bg-slate-100 hover:bg-blue-50 text-slate-600 hover:text-blue-600 rounded-xl transition-all"><Settings size={20} /></button>}</div>
       </div>
-      <div onScroll={() => activeMenu && setActiveMenu(null)} className="flex-1 overflow-y-auto p-4 sm:p-6 w-full"><div className="mx-auto flex flex-col gap-4">{items.map(item => (<MessageItem key={item.id} item={item} isMe={item.senderId === CLIENT_ID || item.senderId === 'DESKTOP' || item.senderId === 'CLIPBOARD_SYNC' || item.senderId === 'CLIPBOARD_IMAGE'} baseUrl={baseUrl} onDelete={() => handleDelete(item.id)} onRetry={() => handleRetry(item)} onPreview={(url, type) => setPreviewMedia({ url, type })} isMenuOpen={activeMenu?.id === item.id} onToggleMenu={handleToggleMenu} menuPos={activeMenu?.id === item.id ? { x: activeMenu.x, y: activeMenu.y } : null} isElectron={isElectron} />))}{items.length === 0 && (<div className="py-20 flex flex-col items-center justify-center text-slate-300"><UploadCloud size={64} strokeWidth={1} /><p className="mt-4 text-sm font-medium">暂无共享内容，开始发送吧</p></div>)}<div ref={scrollEndRef} /></div></div>
+      <div onScroll={() => activeMenu && setActiveMenu(null)} className="flex-1 overflow-y-auto p-4 sm:p-6 w-full"><div className="mx-auto flex flex-col gap-4">{items.map(item => (<MessageItem key={item.id} item={item} isMe={item.senderId === CLIENT_ID || item.senderId === 'DESKTOP' || item.senderId === 'CLIPBOARD_SYNC' || item.senderId === 'CLIPBOARD_IMAGE'} baseUrl={baseUrl} onDelete={() => handleDelete(item.id)} onPreview={(url, type) => setPreviewMedia({ url, type })} isMenuOpen={activeMenu?.id === item.id} onToggleMenu={handleToggleMenu} menuPos={activeMenu?.id === item.id ? { x: activeMenu.x, y: activeMenu.y } : null} isElectron={isElectron} />))}{items.length === 0 && (<div className="py-20 flex flex-col items-center justify-center text-slate-300"><UploadCloud size={64} strokeWidth={1} /><p className="mt-4 text-sm font-medium">暂无共享内容，开始发送吧</p></div>)}<div ref={scrollEndRef} /></div></div>
       <div className="bg-white border-t shrink-0 z-50 pb-safe"><BottomInput inputText={inputText} setInputText={setInputText} isMenuOpen={isMenuOpen} setIsMenuOpen={setIsMenuOpen} onSend={handleSendText} isMobile={isMobile} /><ActionPanel isOpen={isMenuOpen} isMobile={isMobile} isElectron={isElectron} onAction={handleActionClick} onNativeFolder={handleNativeFolderSelect} /></div>
       <input type="file" multiple ref={fileInputRef} onChange={(e) => e.target.files && Array.from(e.target.files).forEach(f => uploadFile(f))} className="hidden" />
       <input type="file" accept="image/*" ref={albumInputRef} onChange={(e) => e.target.files && Array.from(e.target.files).forEach(f => uploadFile(f))} className="hidden" />
