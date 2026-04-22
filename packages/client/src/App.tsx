@@ -152,10 +152,19 @@ export default function App() {
     if (id === null) setActiveMenu(null);
     else if (rect) {
       const isMe = items.find(i => i.id === id)?.senderId === CLIENT_ID;
+      const menuWidth = 160; // 菜单的大致宽度
       let x = isMe ? rect.left - 140 : rect.left;
       let y = rect.bottom + 8;
-      if (x + 160 > window.innerWidth) x = window.innerWidth - 176;
+
+      // 左侧边界检查：确保不会超出屏幕左边
+      if (x < 8) x = 8;
+
+      // 右侧边界检查：确保不会超出屏幕右边
+      if (x + menuWidth > window.innerWidth) x = window.innerWidth - menuWidth - 16;
+
+      // 底部边界检查：确保不会超出屏幕底部
       if (y + 120 > window.innerHeight) y = rect.top - 128;
+
       setActiveMenu({ id, x, y });
     }
   };
@@ -199,7 +208,23 @@ export default function App() {
                 <div className="bg-slate-50 p-6 rounded-[2rem] mb-4 border border-slate-100 shadow-inner">
                   <img src={config.qr} alt="QR" className="w-56 h-56 mx-auto" />
                 </div>
-                <code className="block mt-4 text-blue-600 bg-blue-50 px-4 py-2 rounded-2xl text-[10px] font-mono border border-blue-100 select-all">{config.url}</code>
+                <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+                  {(config as any).allIps?.map((ip: string) => (
+                    <button
+                      key={ip}
+                      onClick={() => {
+                        const url = `http://${ip}:3000`;
+                        setBaseUrl(url);
+                        localStorage.setItem('fast_send_last_url', url);
+                        showToast(`已切换到地址: ${ip}`, 'info');
+                      }}
+                      className={`block w-full px-4 py-2 rounded-xl text-[10px] font-mono border transition-all ${baseUrl.includes(ip) ? 'bg-blue-600 text-white border-blue-600' : 'bg-blue-50 text-blue-600 border-blue-100 hover:bg-blue-100'}`}
+                    >
+                      http://{ip}:3000
+                    </button>
+                  ))}
+                  <code className="block mt-4 text-slate-400 text-[9px] uppercase font-bold tracking-tighter">点击地址可手动切换</code>
+                </div>
               </>
             ) : (
               <div className="py-10 text-slate-400">

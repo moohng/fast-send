@@ -85,38 +85,57 @@ export async function startServer(port: number = DEFAULT_PORT, customBaseDir?: s
     app.post('/api/upload/merge', async (req: Request, res: Response) => {
         const { hash, fileName, total, senderId } = req.body;
         const chunkDir = path.join(finalChunkDir, hash);
-        const fixedFileName = Buffer.from(fileName, 'latin1').toString('utf8');
+
+        // 改进文件名解码逻辑，兼容 Multer 的默认 latin1 编码
+        let fixedFileName = fileName;
+        try {
+            fixedFileName = Buffer.from(fileName, 'latin1').toString('utf8');
+        } catch (e) {
+            console.warn('Filename decode failed, using raw name');
+        }
+
         const finalFileName = `${Date.now()}-${fixedFileName}`;
         const finalFilePath = path.join(finalUploadDir, finalFileName);
 
         try {
             if (!fs.existsSync(chunkDir)) return res.status(400).json({ error: 'Chunks not found' });
 
+            // 检查分片完整性
+            const files = await fs.promises.readdir(chunkDir);
+            if (files.length < total) {
+                return res.status(400).json({ error: `Missing chunks. Expected ${total}, got ${files.length}` });
+            }
+
             const writeStream = fs.createWriteStream(finalFilePath);
-            
-            // 顺序合并分片
+
+            // 顺序流式合并
             for (let i = 0; i < total; i++) {
                 const chunkPath = path.join(chunkDir, String(i));
-                const readStream = fs.createReadStream(chunkPath);
-                
                 await new Promise<void>((resolve, reject) => {
+                    const readStream = fs.createReadStream(chunkPath);
                     readStream.pipe(writeStream, { end: false });
                     readStream.on('end', resolve);
                     readStream.on('error', reject);
                 });
-                await fs.promises.unlink(chunkPath); // 异步删除分片
+                // 合并完立即异步删除，节省空间
+                fs.promises.unlink(chunkPath).catch(console.error);
             }
-            
+
             writeStream.end();
             await new Promise((resolve) => writeStream.on('finish', resolve));
 
-            await fs.promises.rm(chunkDir, { recursive: true, force: true }); // 异步删除目录
+            // 清理分片目录
+            fs.promises.rm(chunkDir, { recursive: true, force: true }).catch(console.error);
 
             const stats = await fs.promises.stat(finalFilePath);
             const item = db.add({
-                type: 'file', filename: finalFileName, originalName: fixedFileName,
+                type: 'file',
+                filename: finalFileName,
+                originalName: fixedFileName,
                 size: (stats.size / 1024 / 1024).toFixed(2) + ' MB',
-                senderId: String(senderId), time: new Date().toLocaleTimeString(), fullTime: new Date().toISOString()
+                senderId: String(senderId),
+                time: new Date().toLocaleTimeString(),
+                fullTime: new Date().toISOString()
             });
             io.emit('new-item', item);
             res.json(item);
@@ -127,22 +146,29 @@ export async function startServer(port: number = DEFAULT_PORT, customBaseDir?: s
         }
     });
 
-    // 3. 检查分片状态
+    // 3. 检查分片状态（支持断点续传）
     app.get('/api/upload/check/:hash', async (req: Request, res: Response) => {
         const chunkDir = path.join(finalChunkDir, req.params.hash);
         if (fs.existsSync(chunkDir)) {
             const files = await fs.promises.readdir(chunkDir);
-            const chunks = files.map(Number).sort((a, b) => a - b);
+            const chunks = files.map(Number).filter(n => !isNaN(n)).sort((a, b) => a - b);
             res.json({ uploaded: chunks });
         } else {
             res.json({ uploaded: [] });
         }
     });
 
-    // (原有的 text 和 delete 接口保持不变)
+    // 4. 改进配置接口，返回所有 IP 列表
     app.get('/api/config', async (req: Request, res: Response) => {
-        const localIP = getLocalIP();
-        res.json({ ip: localIP, url: `http://${localIP}:${port}`, qr: await QRCode.toDataURL(`http://${localIP}:${port}`) });
+        const { getAllLocalIPs } = await import('./utils/network.ts');
+        const ips = getAllLocalIPs();
+        const primaryIP = ips[0] || '127.0.0.1';
+        res.json({
+            ip: primaryIP,
+            allIps: ips,
+            url: `http://${primaryIP}:${port}`,
+            qr: await QRCode.toDataURL(`http://${primaryIP}:${port}`)
+        });
     });
     app.get('/api/items', (req: Request, res: Response) => res.json(db.getAll()));
     app.post('/api/text', (req: Request, res: Response) => {

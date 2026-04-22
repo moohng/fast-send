@@ -14,7 +14,7 @@
     "check": "npm run check --workspaces",
     "build": "npm run build --workspaces",
     "dev": "concurrently \"npm run client\" \"npm run electron:dev\"",
-    "electron:dev": "electron -r ts-node/register -r tsconfig-paths/register .",
+    "electron:dev": "nodemon --watch electron --watch packages/server/src --ext ts --exec electron -r ts-node/register -r tsconfig-paths/register .",
     "electron:build": "npm run build && electron-builder"
   },
   "dependencies": {
@@ -37,6 +37,7 @@
     "concurrently": "^9.1.0",
     "electron": "41.2.2",
     "electron-builder": "26.8.1",
+    "nodemon": "3.1.14",
     "ts-node": "^10.9.2",
     "tsconfig-paths": "4.2.0",
     "typescript": "^5.7.2"

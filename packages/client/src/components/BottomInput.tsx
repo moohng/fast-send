@@ -52,7 +52,7 @@ export const BottomInput: React.FC<BottomInputProps> = ({
           onKeyDown={handleKeyDown}
           placeholder="输入文字..."
           rows={1}
-          className="flex-1 bg-transparent border-none focus:ring-0 shadow-none outline-none text-sm py-[12px] px-0 resize-none max-h-32 leading-[24px] block overflow-y-auto" 
+          className="w-0 flex-1 bg-transparent border-none focus:ring-0 shadow-none outline-none text-sm py-[8px] px-0 resize-none max-h-32 leading-[24px] block overflow-y-auto" 
         />
       </div>
       
