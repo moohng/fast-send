@@ -11,15 +11,18 @@ import * as fs from 'fs';
 import * as os from 'os';
 import { fileURLToPath } from 'url';
 
-import { getLocalIP } from './utils/network.ts';
-import { db, setStoragePath } from './core/database.ts';
-import { discovery } from './core/discovery.ts';
+import { getLocalIP } from './utils/network';
+import { db, setStoragePath } from './core/database';
+import { discovery } from './core/discovery';
 import { Bonjour } from 'bonjour-service';
+import open from 'open';
 
 const bonjour = new Bonjour();
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+// 处理 CommonJS 环境下的 __dirname
+const _dirname = typeof __dirname !== 'undefined'
+    ? __dirname
+    : path.dirname(fileURLToPath((process as any).mainModule?.filename || ''));
 
 export interface ServerInstance {
     app: express.Application;
@@ -46,19 +49,47 @@ export async function startServer(port: number = DEFAULT_PORT, customBaseDir?: s
 
     const app = express();
     const server = http.createServer(app);
-    const io = new Server(server, { cors: { origin: "*" } });
+    const io = new Server(server, {
+        cors: {
+            origin: "*",
+            methods: ["GET", "POST", "DELETE", "OPTIONS"],
+            allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With"],
+            credentials: true
+        }
+    });
 
-    app.use(cors({
-        origin: '*',
-        methods: ['GET', 'POST', 'DELETE', 'OPTIONS'],
-        allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
-        credentials: true
-    }));
+    app.use(cors());
     app.use(express.json());
     app.use('/download', express.static(finalUploadDir));
 
-    // 处理 OPTIONS 预检请求
-    app.options('*', cors() as any);
+    // 托管前端静态文件 (生产环境)
+    const clientDist = process.env.NODE_SEA === 'true'
+        ? path.join(path.dirname(process.execPath), 'public')
+        : path.join(_dirname, '../../client/dist');
+
+    if (fs.existsSync(clientDist)) {
+        app.use(express.static(clientDist));
+    }
+
+    // 设置 API
+    app.get('/api/settings', (req: Request, res: Response) => {
+        const key = Array.isArray(req.query.key) ? String(req.query.key[0]) : String(req.query.key || '');
+        if (key) {
+            res.json({ value: db.getSetting(key) });
+        } else {
+            res.status(400).json({ error: 'Missing key' });
+        }
+    });
+
+    app.post('/api/settings', (req: Request, res: Response) => {
+        const { key, value } = req.body;
+        if (key && value !== undefined) {
+            db.setSetting(key, value);
+            res.json({ success: true });
+        } else {
+            res.status(400).json({ error: 'Missing key or value' });
+        }
+    });
 
     // Multer 配置用于接收分片
     const chunkStorage = multer.diskStorage({
@@ -72,7 +103,7 @@ export async function startServer(port: number = DEFAULT_PORT, customBaseDir?: s
                 cb(err, dir);
             }
         },
-        filename: (req, file, cb) => cb(null, req.body.index) 
+        filename: (req, file, cb) => cb(null, req.body.index)
     });
     const uploadChunk = multer({ storage: chunkStorage });
 
@@ -122,7 +153,7 @@ export async function startServer(port: number = DEFAULT_PORT, customBaseDir?: s
             }
 
             writeStream.end();
-            await new Promise((resolve) => writeStream.on('finish', resolve));
+            await new Promise<void>((resolve) => writeStream.on('finish', resolve));
 
             // 清理分片目录
             fs.promises.rm(chunkDir, { recursive: true, force: true }).catch(console.error);
@@ -148,7 +179,8 @@ export async function startServer(port: number = DEFAULT_PORT, customBaseDir?: s
 
     // 3. 检查分片状态（支持断点续传）
     app.get('/api/upload/check/:hash', async (req: Request, res: Response) => {
-        const chunkDir = path.join(finalChunkDir, req.params.hash);
+        const hash = String(req.params.hash);
+        const chunkDir = path.join(finalChunkDir, hash);
         if (fs.existsSync(chunkDir)) {
             const files = await fs.promises.readdir(chunkDir);
             const chunks = files.map(Number).filter(n => !isNaN(n)).sort((a, b) => a - b);
@@ -160,7 +192,7 @@ export async function startServer(port: number = DEFAULT_PORT, customBaseDir?: s
 
     // 4. 改进配置接口，返回所有 IP 列表
     app.get('/api/config', async (req: Request, res: Response) => {
-        const { getAllLocalIPs } = await import('./utils/network.ts');
+        const { getAllLocalIPs } = await import('./utils/network');
         const ips = getAllLocalIPs();
         const primaryIP = ips[0] || '127.0.0.1';
         res.json({
@@ -177,7 +209,7 @@ export async function startServer(port: number = DEFAULT_PORT, customBaseDir?: s
         res.json(item);
     });
     app.delete('/api/items/:id', async (req: Request, res: Response) => {
-        const id = parseInt(req.params.id);
+        const id = parseInt(String(req.params.id));
         const item = db.getAll().find(i => i.id === id);
         if (item && item.type === 'file' && item.filename) {
             const filePath = path.join(finalUploadDir, item.filename);
@@ -192,7 +224,8 @@ export async function startServer(port: number = DEFAULT_PORT, customBaseDir?: s
     io.on('connection', (socket) => {
         socket.on('register', (data) => {
             const clientId = data.id || socket.id;
-            const userAgent = socket.handshake.headers['user-agent'] || '';
+            const userAgent = (socket.handshake.headers['user-agent'] || '').toString();
+            const clientIp = (socket.handshake.address || '').toString().replace('::ffff:', '');
             let deviceName = 'Web Device';
             if (userAgent.includes('iPhone')) deviceName = 'iPhone';
             else if (userAgent.includes('Android')) deviceName = 'Android';
@@ -202,7 +235,7 @@ export async function startServer(port: number = DEFAULT_PORT, customBaseDir?: s
             if (oldInfo) socketToClientId.delete(oldInfo.lastSocketId);
             devicesByClientId.set(clientId, {
                 id: clientId, name: deviceName, type: data.type || 'web',
-                ip: socket.handshake.address.replace('::ffff:', ''), lastSocketId: socket.id
+                ip: clientIp, lastSocketId: socket.id
             });
             socketToClientId.set(socket.id, clientId);
             broadcastDevices();
@@ -228,11 +261,58 @@ export async function startServer(port: number = DEFAULT_PORT, customBaseDir?: s
     return new Promise((resolve, reject) => {
         server.on('error', reject);
         server.listen(port, '0.0.0.0', () => {
+            const localIP = getLocalIP();
             discovery.startBroadcasting(port, os.hostname());
             bonjour.publish({ name: `FastSend-${os.hostname()}`, type: 'fastsend', port, protocol: 'tcp' });
+
+            console.log('\n🚀 FastSend Server 启动成功!');
+            console.log(`-----------------------------------`);
+            console.log(`本地访问: http://localhost:${port}`);
+            console.log(`局域网访问: http://${localIP}:${port}`);
+            console.log(`-----------------------------------\n`);
+
+            // 打印二维码到终端
+            qrcodeTerminal.generate(`http://${localIP}:${port}`, { small: true });
+
+            // 生产环境下或显式要求时自动打开浏览器
+            if (process.env.START_SERVER === 'true' || process.env.NODE_ENV === 'production') {
+                const url = `http://localhost:${port}`;
+                console.log(`正在打开浏览器: ${url}`);
+                open(url).catch(err => console.error('无法打开浏览器:', err));
+            }
+
             resolve({ app, server, io, port, stop: () => { discovery.stop(); bonjour.destroy(); server.close(); } });
         });
     });
 }
 
-if (process.env.START_SERVER === 'true') startServer().catch(console.error);
+// 首页路由重定向到 index.html (对于 SPA)
+// 注意：这个需要放在最后
+export async function setupSpaFallback(app: express.Application) {
+    const clientDist = process.env.NODE_SEA === 'true'
+        ? path.join(path.dirname(process.execPath), 'public')
+        : path.join(_dirname, '../../client/dist');
+
+    app.get('*', (req: Request, res: Response, next: express.NextFunction) => {
+        if (req.path.startsWith('/api') || req.path.startsWith('/download') || req.path.includes('.')) {
+            return next();
+        }
+        if (fs.existsSync(path.join(clientDist, 'index.html'))) {
+            res.sendFile(path.join(clientDist, 'index.html'));
+        } else {
+            next();
+        }
+    });
+}
+
+// 自动启动逻辑
+const isMainModule = process.env.NODE_ENV !== 'test'; // 简单判断
+
+if (process.env.START_SERVER === 'true' || process.argv.includes('--start') || require.main === module || !process.env.NODE_ENV) {
+    startServer().then(async (instance) => {
+        await setupSpaFallback(instance.app);
+    }).catch(err => {
+        console.error('Failed to start server:', err);
+        process.exit(1);
+    });
+}

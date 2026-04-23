@@ -36,7 +36,6 @@ interface Props {
   isMenuOpen: boolean
   onToggleMenu: (id: number | null, rect?: DOMRect) => void
   menuPos: { x: number; y: number } | null
-  isElectron?: boolean
 }
 
 export const MessageItem: React.FC<Props> = ({
@@ -48,7 +47,6 @@ export const MessageItem: React.FC<Props> = ({
   isMenuOpen,
   onToggleMenu,
   menuPos,
-  isElectron,
 }) => {
   const [copied, setCopied] = useState(false)
   const menuBtnRef = useRef<HTMLButtonElement>(null)
@@ -90,14 +88,6 @@ export const MessageItem: React.FC<Props> = ({
     } else {
       const rect = menuBtnRef.current?.getBoundingClientRect()
       onToggleMenu(item.id, rect)
-    }
-  }
-
-  const handleShowInFolder = (e: React.MouseEvent) => {
-    e.stopPropagation()
-    if (isElectron && item.filename) {
-      ;(window as any).electronAPI.showItemInFolder(item.filename)
-      onToggleMenu(null)
     }
   }
 
@@ -215,19 +205,8 @@ export const MessageItem: React.FC<Props> = ({
             <span className="font-medium">复制内容</span>
           </button>
 
-          {/* 桌面端特有：定位文件 */}
-          {item.type === 'file' && isElectron && (
-            <button
-              onClick={handleShowInFolder}
-              className="w-full px-4 py-2 text-left text-sm hover:bg-blue-50 flex items-center gap-3 text-slate-700 transition-colors"
-            >
-              <FolderOpen size={16} className="text-slate-400" />
-              <span className="font-medium">定位文件</span>
-            </button>
-          )}
-
-          {/* 只有在非桌面端且非原生 App 环境下才显示下载按钮 */}
-          {item.type === 'file' && !isElectron && !Capacitor.isNativePlatform() && (
+          {/* 只有在非原生 App 环境下才显示下载按钮 */}
+          {item.type === 'file' && !Capacitor.isNativePlatform() && (
             <a
               href={downloadUrl}
               download={item.originalName}

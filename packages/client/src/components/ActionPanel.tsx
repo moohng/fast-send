@@ -30,17 +30,13 @@ const ActionButton: React.FC<ActionButtonProps> = ({
 interface ActionPanelProps {
   isOpen: boolean
   isMobile: boolean
-  isElectron: boolean
   onAction: (type: string) => void
-  onNativeFolder: () => void
 }
 
 export const ActionPanel: React.FC<ActionPanelProps> = ({
   isOpen,
   isMobile,
-  isElectron,
   onAction,
-  onNativeFolder,
 }) => {
   return (
     <div
@@ -72,14 +68,6 @@ export const ActionPanel: React.FC<ActionPanelProps> = ({
                 onClick={() => onAction('video')}
               />
             </>
-          )}
-          {isElectron && (
-            <ActionButton
-              icon={FolderPlus}
-              label="文件夹"
-              color="indigo"
-              onClick={onNativeFolder}
-            />
           )}
         </div>
       </div>

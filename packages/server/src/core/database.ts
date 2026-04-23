@@ -2,6 +2,9 @@ import Database from 'better-sqlite3';
 import * as path from 'path';
 import * as fs from 'fs';
 
+// 解决 better-sqlite3 的类型引用问题
+type BetterDatabase = any;
+
 export interface SharedItem {
     id: number;
     type: 'text' | 'file';
@@ -15,7 +18,7 @@ export interface SharedItem {
 }
 
 class DataStore {
-    private db: any; // better-sqlite3.Database
+    private db: BetterDatabase;
     private storagePath: string = '';
 
     constructor() {}
@@ -42,8 +45,23 @@ class DataStore {
                 time TEXT NOT NULL,
                 fullTime TEXT NOT NULL,
                 senderId TEXT NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS settings (
+                key TEXT PRIMARY KEY,
+                value TEXT
             )
         `);
+    }
+
+    public getSetting(key: string, defaultValue: string = ''): string {
+        if (!this.db) return defaultValue;
+        const row = this.db.prepare('SELECT value FROM settings WHERE key = ?').get(key) as { value: string } | undefined;
+        return row ? row.value : defaultValue;
+    }
+
+    public setSetting(key: string, value: string): void {
+        if (!this.db) throw new Error('Database not initialized');
+        this.db.prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)').run(key, value);
     }
 
     public getAll(): SharedItem[] {

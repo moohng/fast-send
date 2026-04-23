@@ -3,6 +3,7 @@ uploads/
 *.log
 
 dist
+out
 
 fast-send-data.json
 

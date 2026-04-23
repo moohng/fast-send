@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react'
+import React, { useState, useEffect, useRef, useCallback } from 'react'
 import { QrCode, X, UploadCloud, Settings, FolderOpen } from 'lucide-react'
 import { SharedItem, ServerConfig } from './types'
 import { MessageItem } from './components/MessageItem'
@@ -40,7 +40,6 @@ export default function App() {
   const dragCounter = useRef(0)
 
   const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent)
-  const isElectron = !!(window as any).electronAPI
 
   const fileInputRef = useRef<HTMLInputElement>(null)
   const albumInputRef = useRef<HTMLInputElement>(null)
@@ -48,17 +47,17 @@ export default function App() {
   const videoInputRef = useRef<HTMLInputElement>(null)
   const scrollEndRef = useRef<HTMLDivElement>(null)
 
-  const showToast = (m: string, t: 'success' | 'error' | 'info' = 'success') => {
+  const showToast = useCallback((m: string, t: 'success' | 'error' | 'info' = 'success') => {
     const id = Date.now() + Math.random()
     setToasts((p) => [...p, { id, message: m, type: t }])
     setTimeout(() => setToasts((p) => p.filter((x) => x.id !== id)), 2500)
-  }
+  }, [])
 
   const scrollToBottom = () => {
     setTimeout(() => scrollEndRef.current?.scrollIntoView({ behavior: 'smooth' }), 100)
   }
 
-  const { socket, devices } = useSocket(baseUrl, CLIENT_ID, isMobile, isElectron)
+  const { socket, devices } = useSocket(baseUrl, CLIENT_ID, isMobile, false)
   const { items, setItems, fetchData, handleDelete } = useItems(
     baseUrl,
     socket,
@@ -83,7 +82,11 @@ export default function App() {
         })
         const c = await response.json()
         setConfig(c)
-        if (c.downloadPath) setDownloadPath(c.downloadPath)
+
+        // 获取保存路径
+        const settingsRes = await fetch(`${baseUrl}/api/settings?key=downloadPath`)
+        const settings = await settingsRes.json()
+        if (settings.value) setDownloadPath(settings.value)
       } catch (e) {
         console.error('Config fetch error:', e)
       }
@@ -93,15 +96,15 @@ export default function App() {
 
   useEffect(() => {
     const initUrl = async () => {
-      let url = ''
-      if (isElectron) url = (await (window as any).electronAPI.getServerUrl()) || ''
-      else url = `http://${window.location.hostname}:3000`
-      console.log('[App] Initial URL:', url)
-      setBaseUrl(url)
-      localStorage.setItem('fast_send_last_url', url)
+      const url = `http://${window.location.hostname}:3000`
+      if (baseUrl !== url) {
+        console.log('[App] Initializing URL:', url)
+        setBaseUrl(url)
+        localStorage.setItem('fast_send_last_url', url)
+      }
     }
     initUrl()
-  }, [isElectron])
+  }, [])
 
   const handleActionClick = (type: string) => {
     setIsMenuOpen(false)
@@ -109,18 +112,6 @@ export default function App() {
     if (type === 'album') albumInputRef.current?.click()
     if (type === 'camera') cameraInputRef.current?.click()
     if (type === 'video') videoInputRef.current?.click()
-  }
-
-  const handleNativeFolderSelect = async () => {
-    setIsMenuOpen(false)
-    const path = await (window as any).electronAPI.selectDownloadPath()
-    if (path) {
-      const isDir = await (window as any).electronAPI.checkIsDirectory(path)
-      if (isDir) {
-        showToast('正在压缩文件夹并上传...', 'info')
-        await (window as any).electronAPI.zipFolder(path)
-      }
-    }
   }
 
   const handleDragEnter = (e: React.DragEvent) => {
@@ -137,26 +128,7 @@ export default function App() {
     e.preventDefault()
     setIsDragging(false)
     dragCounter.current = 0
-    if (isElectron && e.dataTransfer.items) {
-      const itemsArr = Array.from(e.dataTransfer.items)
-      for (const item of itemsArr) {
-        if (item.kind === 'file') {
-          const file = item.getAsFile()
-          if (file) {
-            const path = (file as any).path
-            if (path) {
-              const isDir = await (window as any).electronAPI.checkIsDirectory(path)
-              if (isDir) {
-                showToast('检测到文件夹，正在压缩并上传...', 'info')
-                await (window as any).electronAPI.zipFolder(path)
-                continue
-              }
-            }
-            if (file) uploadFile(file)
-          }
-        }
-      }
-    } else if (e.dataTransfer.files) {
+    if (e.dataTransfer.files) {
       Array.from(e.dataTransfer.files).forEach((file) => uploadFile(file))
     }
   }
@@ -301,8 +273,7 @@ export default function App() {
               onPreview={(url, type) => setPreviewMedia({ url, type })}
               isMenuOpen={activeMenu?.id === item.id}
               onToggleMenu={handleToggleMenu}
-              menuPos={activeMenu?.id === item.id ? { x: activeMenu.x, y: activeMenu.y } : null}
-              isElectron={isElectron}
+              menuPos={activeMenu?.id === item.id && activeMenu ? { x: activeMenu.x, y: activeMenu.y } : null}
             />
           ))}
           {items.length === 0 && (
@@ -326,9 +297,7 @@ export default function App() {
         <ActionPanel
           isOpen={isMenuOpen}
           isMobile={isMobile}
-          isElectron={isElectron}
           onAction={handleActionClick}
-          onNativeFolder={handleNativeFolderSelect}
         />
       </div>
       <input
@@ -463,7 +432,7 @@ export default function App() {
                 </p>
               </div>
 
-              {isElectron && (
+              {false && (
                 <div>
                   <label className="block text-xs font-bold text-slate-400 uppercase mb-2">
                     文件保存路径
@@ -472,18 +441,6 @@ export default function App() {
                     <div className="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-xs text-slate-600 truncate">
                       {downloadPath}
                     </div>
-                    <button
-                      onClick={async () => {
-                        const path = await (window as any).electronAPI.selectDownloadPath()
-                        if (path) {
-                          setDownloadPath(path)
-                          showToast('保存路径已更新')
-                        }
-                      }}
-                      className="p-2.5 bg-blue-50 text-blue-600 rounded-xl hover:bg-blue-100 transition-colors"
-                    >
-                      <FolderOpen size={18} />
-                    </button>
                   </div>
                 </div>
               )}

@@ -1,5 +1,5 @@
 import { Bonjour } from 'bonjour-service';
-import { getLocalIP } from '../utils/network.ts';
+import { getLocalIP } from '../utils/network';
 
 /**
  * mDNS 自动发现服务管理。

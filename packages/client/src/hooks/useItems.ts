@@ -111,8 +111,10 @@ export const useItems = (
   )
 
   useEffect(() => {
-    fetchData()
-  }, [fetchData])
+    if (baseUrl) {
+      fetchData()
+    }
+  }, [baseUrl, fetchData])
 
   useEffect(() => {
     if (!socket) return
