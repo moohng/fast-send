@@ -80,8 +80,19 @@ export const useItems = (
         // 这里的逻辑可以改为：拉取列表后，自动同步还没同步过的文件
         if (Capacitor.isNativePlatform()) {
           i.forEach((item: SharedItem) => {
-            if (item.type === 'file' && item.senderId !== clientId) {
+            if (item.senderId === clientId) return
+            if (item.type === 'file' && item.filename) {
               autoDownloadForMobile(item)
+            } else if (item.type === 'gallery' && item.files) {
+              item.files.forEach(f => {
+                autoDownloadForMobile({
+                  ...item,
+                  type: 'file',
+                  filename: f.filename,
+                  originalName: f.originalName,
+                  size: f.size
+                })
+              })
             }
           })
         }
@@ -110,8 +121,21 @@ export const useItems = (
         !['CLIPBOARD_SYNC', 'CLIPBOARD_IMAGE'].includes(item.senderId)
       ) {
         showToast('收到新内容', 'info')
-        if (Capacitor.isNativePlatform() && item.type === 'file') {
-          autoDownloadForMobile(item)
+        if (Capacitor.isNativePlatform()) {
+          if (item.type === 'file') {
+            autoDownloadForMobile(item)
+          } else if (item.type === 'gallery' && item.files) {
+            // 批量下载画廊中的所有文件
+            item.files.forEach(f => {
+              autoDownloadForMobile({
+                ...item,
+                type: 'file',
+                filename: f.filename,
+                originalName: f.originalName,
+                size: f.size
+              })
+            })
+          }
         }
       }
     })

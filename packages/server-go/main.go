@@ -43,18 +43,27 @@ var iconData = []byte{
 	0x42, 0x60, 0x82,
 }
 
+// FileInfo 描述单个文件信息
+type FileInfo struct {
+	Filename     string `json:"filename"`
+	OriginalName string `json:"originalName"`
+	Size         string `json:"size"`
+	Type         string `json:"type"` // image, video, file
+}
+
 // SharedItem 对应前端的 SharedItem
 type SharedItem struct {
-	ID           int64   `json:"id"`
-	Type         string  `json:"type"`
-	Content      string  `json:"content,omitempty"`
-	Filename     string  `json:"filename,omitempty"`
-	OriginalName string  `json:"originalName,omitempty"`
-	Size         string  `json:"size,omitempty"`
-	Time         string  `json:"time"`
-	FullTime     string  `json:"fullTime"`
-	SenderID     string  `json:"senderId"`
-	Progress     float64 `json:"progress,omitempty"`
+	ID           int64      `json:"id"`
+	Type         string     `json:"type"`
+	Content      string     `json:"content,omitempty"`
+	Filename     string     `json:"filename,omitempty"`
+	OriginalName string     `json:"originalName,omitempty"`
+	Size         string     `json:"size,omitempty"`
+	Files        []FileInfo `json:"files,omitempty"`
+	Time         string     `json:"time"`
+	FullTime     string     `json:"fullTime"`
+	SenderID     string     `json:"senderId"`
+	Progress     float64    `json:"progress,omitempty"`
 }
 
 type Device struct {
@@ -96,24 +105,45 @@ func initDB() {
 	}
 
 	_, err = db.Exec(`
-		CREATE TABLE IF NOT EXISTS items (
-			id INTEGER PRIMARY KEY,
-			type TEXT NOT NULL,
-			content TEXT,
-			filename TEXT,
-			originalName TEXT,
-			size TEXT,
-			time TEXT NOT NULL,
-			fullTime TEXT NOT NULL,
-			senderId TEXT NOT NULL
-		);
-		CREATE TABLE IF NOT EXISTS settings (
-			key TEXT PRIMARY KEY,
-			value TEXT
-		);
-	`)
+			CREATE TABLE IF NOT EXISTS items (
+				id INTEGER PRIMARY KEY,
+				type TEXT NOT NULL,
+				content TEXT,
+				filename TEXT,
+				originalName TEXT,
+				files TEXT,
+				size TEXT,
+				time TEXT NOT NULL,
+				fullTime TEXT NOT NULL,
+				senderId TEXT NOT NULL
+			);
+			CREATE TABLE IF NOT EXISTS settings (
+				key TEXT PRIMARY KEY,
+				value TEXT
+			);
+		`)
 	if err != nil {
 		log.Fatal(err)
+	}
+
+	// 检查并添加缺失的列
+	rows, err := db.Query("PRAGMA table_info(items)")
+	if err == nil {
+		hasFiles := false
+		for rows.Next() {
+			var cid int
+			var name, ctype string
+			var notnull, pk int
+			var dflt_value interface{}
+			rows.Scan(&cid, &name, &ctype, &notnull, &dflt_value, &pk)
+			if name == "files" {
+				hasFiles = true
+			}
+		}
+		rows.Close()
+		if !hasFiles {
+			db.Exec("ALTER TABLE items ADD COLUMN files TEXT")
+		}
 	}
 }
 
@@ -221,8 +251,8 @@ func onReady() {
 						FullTime: now.Format(time.RFC3339),
 					}
 					// 存入数据库并广播
-					db.Exec(`INSERT INTO items (id, type, content, time, fullTime, senderId) VALUES (?, ?, ?, ?, ?, ?)`,
-						item.ID, item.Type, item.Content, item.Time, item.FullTime, item.SenderID)
+					db.Exec(`INSERT INTO items (id, type, content, files, time, fullTime, senderId) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+						item.ID, item.Type, item.Content, "", item.Time, item.FullTime, item.SenderID)
 					broadcast("new-item", item)
 				}
 			}
@@ -294,7 +324,7 @@ func onReady() {
 			})
 
 			api.GET("/items", func(c *gin.Context) {
-				rows, err := db.Query("SELECT * FROM items ORDER BY id DESC LIMIT 100")
+				rows, err := db.Query("SELECT id, type, content, filename, originalName, files, size, time, fullTime, senderId FROM items ORDER BY id DESC LIMIT 100")
 				if err != nil {
 					c.JSON(500, gin.H{"error": err.Error()})
 					return
@@ -304,8 +334,8 @@ func onReady() {
 				items := []SharedItem{}
 				for rows.Next() {
 					var item SharedItem
-					var content, filename, originalName, size sql.NullString
-					err := rows.Scan(&item.ID, &item.Type, &content, &filename, &originalName, &size, &item.Time, &item.FullTime, &item.SenderID)
+					var content, filename, originalName, size, filesJSON sql.NullString
+					err := rows.Scan(&item.ID, &item.Type, &content, &filename, &originalName, &filesJSON, &size, &item.Time, &item.FullTime, &item.SenderID)
 					if err != nil {
 						continue
 					}
@@ -313,6 +343,9 @@ func onReady() {
 					item.Filename = filename.String
 					item.OriginalName = originalName.String
 					item.Size = size.String
+					if filesJSON.Valid && filesJSON.String != "" {
+						json.Unmarshal([]byte(filesJSON.String), &item.Files)
+					}
 					items = append(items, item)
 				}
 				c.JSON(200, items)
@@ -320,26 +353,45 @@ func onReady() {
 
 			api.POST("/text", func(c *gin.Context) {
 				var input struct {
-					Content  string `json:"content"`
-					SenderID string `json:"senderId"`
+					Content  string     `json:"content"`
+					SenderID string     `json:"senderId"`
+					Type     string     `json:"type"`
+					Files    []FileInfo `json:"files"`
 				}
 				if err := c.ShouldBindJSON(&input); err != nil {
 					c.JSON(400, gin.H{"error": err.Error()})
 					return
 				}
 
+				if input.SenderID == "" {
+					c.JSON(400, gin.H{"error": "Missing senderId"})
+					return
+				}
+
 				now := time.Now()
+				itemType := "text"
+				if input.Type != "" {
+					itemType = input.Type
+				}
+
 				item := SharedItem{
 					ID:       now.UnixNano() / 1e6,
-					Type:     "text",
+					Type:     itemType,
 					Content:  input.Content,
 					SenderID: input.SenderID,
+					Files:    input.Files,
 					Time:     now.Format("15:04:05"),
 					FullTime: now.Format(time.RFC3339),
 				}
 
-				_, err := db.Exec(`INSERT INTO items (id, type, content, time, fullTime, senderId) VALUES (?, ?, ?, ?, ?, ?)`,
-					item.ID, item.Type, item.Content, item.Time, item.FullTime, item.SenderID)
+				filesJSON := ""
+				if item.Type == "gallery" && len(item.Files) > 0 {
+					b, _ := json.Marshal(item.Files)
+					filesJSON = string(b)
+				}
+
+				_, err := db.Exec(`INSERT INTO items (id, type, content, files, time, fullTime, senderId) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+					item.ID, item.Type, item.Content, filesJSON, item.Time, item.FullTime, item.SenderID)
 				if err != nil {
 					c.JSON(500, gin.H{"error": err.Error()})
 					return
@@ -389,6 +441,7 @@ func onReady() {
 					FileName string `json:"fileName"`
 					Total    int    `json:"total"`
 					SenderID string `json:"senderId"`
+					NoRecord bool   `json:"noRecord"`
 				}
 				if err := c.ShouldBindJSON(&req); err != nil {
 					c.JSON(400, gin.H{"error": err.Error()})
@@ -449,10 +502,13 @@ func onReady() {
 					FullTime:     now.Format(time.RFC3339),
 				}
 
-				_, err = db.Exec(`INSERT INTO items (id, type, filename, originalName, size, time, fullTime, senderId) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-					item.ID, item.Type, item.Filename, item.OriginalName, item.Size, item.Time, item.FullTime, item.SenderID)
+				if !req.NoRecord {
+					_, err = db.Exec(`INSERT INTO items (id, type, filename, originalName, files, size, time, fullTime, senderId) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+						item.ID, item.Type, item.Filename, item.OriginalName, "", item.Size, item.Time, item.FullTime, item.SenderID)
 
-				broadcast("new-item", item)
+					broadcast("new-item", item)
+				}
+
 				c.JSON(200, item)
 			})
 

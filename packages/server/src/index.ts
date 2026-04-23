@@ -41,7 +41,7 @@ export async function startServer(port: number = DEFAULT_PORT, customBaseDir?: s
     const finalBaseDir = customBaseDir || BASE_DIR;
     const finalUploadDir = path.join(finalBaseDir, 'uploads');
     const finalChunkDir = path.join(finalBaseDir, 'chunks'); // 分片临时目录
-    const finalDbPath = path.join(finalBaseDir, 'database.json');
+    const finalDbPath = path.join(finalBaseDir, 'fast-send.db');
 
     if (!fs.existsSync(finalUploadDir)) await fs.promises.mkdir(finalUploadDir, { recursive: true });
     if (!fs.existsSync(finalChunkDir)) await fs.promises.mkdir(finalChunkDir, { recursive: true });
@@ -114,7 +114,7 @@ export async function startServer(port: number = DEFAULT_PORT, customBaseDir?: s
 
     // 2. 合并分片接口
     app.post('/api/upload/merge', async (req: Request, res: Response) => {
-        const { hash, fileName, total, senderId } = req.body;
+        const { hash, fileName, total, senderId, noRecord } = req.body;
         const chunkDir = path.join(finalChunkDir, hash);
 
         // 改进文件名解码逻辑，兼容 Multer 的默认 latin1 编码
@@ -159,17 +159,26 @@ export async function startServer(port: number = DEFAULT_PORT, customBaseDir?: s
             fs.promises.rm(chunkDir, { recursive: true, force: true }).catch(console.error);
 
             const stats = await fs.promises.stat(finalFilePath);
-            const item = db.add({
-                type: 'file',
+
+            if (!noRecord) {
+                const item = db.add({
+                    type: 'file',
+                    filename: finalFileName,
+                    originalName: fixedFileName,
+                    size: (stats.size / 1024 / 1024).toFixed(2) + ' MB',
+                    senderId: String(senderId),
+                    time: new Date().toLocaleTimeString(),
+                    fullTime: new Date().toISOString()
+                });
+                io.emit('new-item', item);
+            }
+
+            res.json({
                 filename: finalFileName,
                 originalName: fixedFileName,
                 size: (stats.size / 1024 / 1024).toFixed(2) + ' MB',
-                senderId: String(senderId),
-                time: new Date().toLocaleTimeString(),
-                fullTime: new Date().toISOString()
+                type: fixedFileName.match(/\.(jpg|jpeg|png|gif|webp)$/i) ? 'image' : fixedFileName.match(/\.(mp4|mov|webm)$/i) ? 'video' : 'file'
             });
-            io.emit('new-item', item);
-            res.json(item);
         } catch (err) {
             console.error('Merge error:', err);
             if (fs.existsSync(finalFilePath)) await fs.promises.unlink(finalFilePath).catch(() => {});
@@ -204,9 +213,25 @@ export async function startServer(port: number = DEFAULT_PORT, customBaseDir?: s
     });
     app.get('/api/items', (req: Request, res: Response) => res.json(db.getAll()));
     app.post('/api/text', (req: Request, res: Response) => {
-        const item = db.add({ type: 'text', content: req.body.content, senderId: String(req.body.senderId), time: new Date().toLocaleTimeString(), fullTime: new Date().toISOString() });
-        io.emit('new-item', item);
-        res.json(item);
+        try {
+            const { content, senderId, type, files } = req.body;
+            if (!senderId) {
+                return res.status(400).json({ error: 'Missing senderId' });
+            }
+            const item = db.add({
+                type: type || 'text',
+                content: content || null,
+                files: files || null,
+                senderId: String(senderId),
+                time: new Date().toLocaleTimeString(),
+                fullTime: new Date().toISOString()
+            });
+            io.emit('new-item', item);
+            res.json(item);
+        } catch (err) {
+            console.error('API /api/text error:', err);
+            res.status(500).json({ error: 'Internal Server Error' });
+        }
     });
     app.delete('/api/items/:id', async (req: Request, res: Response) => {
         const id = parseInt(String(req.params.id));

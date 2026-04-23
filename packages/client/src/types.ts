@@ -1,11 +1,19 @@
 
+export interface FileInfo {
+    filename: string;
+    originalName: string;
+    size: string;
+    type: 'image' | 'video' | 'file';
+}
+
 export interface SharedItem {
     id: number;
-    type: 'text' | 'file';
+    type: 'text' | 'file' | 'gallery';
     content?: string;
     filename?: string;
     originalName?: string;
     size?: string;
+    files?: FileInfo[];
     time: string;
     fullTime: string;
     senderId: string;

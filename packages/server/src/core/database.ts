@@ -5,13 +5,21 @@ import * as fs from 'fs';
 // 解决 better-sqlite3 的类型引用问题
 type BetterDatabase = any;
 
+export interface FileInfo {
+    filename: string;
+    originalName: string;
+    size: string;
+    type: 'image' | 'video' | 'file';
+}
+
 export interface SharedItem {
     id: number;
-    type: 'text' | 'file';
+    type: 'text' | 'file' | 'gallery';
     content?: string;
     filename?: string;
     originalName?: string;
     size?: string;
+    files?: FileInfo[];
     time: string;
     fullTime: string;
     senderId: string;
@@ -42,6 +50,7 @@ class DataStore {
                 filename TEXT,
                 originalName TEXT,
                 size TEXT,
+                files TEXT,
                 time TEXT NOT NULL,
                 fullTime TEXT NOT NULL,
                 senderId TEXT NOT NULL
@@ -66,31 +75,56 @@ class DataStore {
 
     public getAll(): SharedItem[] {
         if (!this.db) return [];
-        return this.db.prepare('SELECT * FROM items ORDER BY id DESC LIMIT 100').all() as SharedItem[];
+        try {
+            const rows = this.db.prepare('SELECT * FROM items ORDER BY id DESC LIMIT 100').all() as any[];
+            return rows.map(row => {
+                let files = undefined;
+                if (row.files) {
+                    try {
+                        files = JSON.parse(row.files);
+                    } catch (e) {
+                        console.error('Failed to parse files JSON:', row.files);
+                    }
+                }
+                return {
+                    ...row,
+                    files
+                };
+            });
+        } catch (err) {
+            console.error('Database getAll error:', err);
+            return [];
+        }
     }
 
     public add(item: Omit<SharedItem, 'id'>): SharedItem {
         if (!this.db) throw new Error('Database not initialized');
-        
-        const id = Date.now() + Math.floor(Math.random() * 1000);
-        const stmt = this.db.prepare(`
-            INSERT INTO items (id, type, content, filename, originalName, size, time, fullTime, senderId)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-        `);
-        
-        stmt.run(
-            id,
-            item.type,
-            item.content || null,
-            item.filename || null,
-            item.originalName || null,
-            item.size || null,
-            item.time,
-            item.fullTime,
-            item.senderId
-        );
 
-        return { ...item, id };
+        const id = Date.now() + Math.floor(Math.random() * 1000);
+        try {
+            const stmt = this.db.prepare(`
+                INSERT INTO items (id, type, content, filename, originalName, size, files, time, fullTime, senderId)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            `);
+
+            stmt.run(
+                id,
+                item.type || 'text',
+                item.content === undefined ? null : item.content,
+                item.filename === undefined ? null : item.filename,
+                item.originalName === undefined ? null : item.originalName,
+                item.size === undefined ? null : item.size,
+                item.files ? JSON.stringify(item.files) : null,
+                item.time || new Date().toLocaleTimeString(),
+                item.fullTime || new Date().toISOString(),
+                item.senderId || 'unknown'
+            );
+
+            return { ...item, id };
+        } catch (err) {
+            console.error('Database add error:', err);
+            throw err;
+        }
     }
 
     public remove(id: number): boolean {
