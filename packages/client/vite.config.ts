@@ -12,9 +12,9 @@ export default defineConfig({
       '/api': 'http://localhost:3000',
       '/socket.io': {
         target: 'http://localhost:3000',
-        ws: true
+        ws: true,
       },
-      '/download': 'http://localhost:3000'
-    }
-  }
+      '/download': 'http://localhost:3000',
+    },
+  },
 })
