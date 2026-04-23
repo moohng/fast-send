@@ -5,26 +5,22 @@
   "author": "FastSend Team",
   "private": true,
   "workspaces": [
-    "packages/*"
+    "packages/client",
+    "packages/server-go"
   ],
   "scripts": {
-    "server": "npm run dev --workspace=@fast-send/server",
+    "server": "cd packages/server-go && go run main.go",
     "client": "npm run dev --workspace=@fast-send/client",
     "check": "npm run check --workspaces",
-    "build": "npm run build --workspaces",
+    "build": "npm run build --workspace=@fast-send/client",
     "dev": "concurrently \"npm run client\" \"npm run server\"",
-    "start": "npm run build && cross-env START_SERVER=true npm run server",
     "build:go": "cd packages/server-go && go build -o ../../out/FastSend.exe main.go",
     "build:go2": "cd packages/server-go && go build -ldflags=\"-s -w -H windowsgui\" -o ../../out/FastSend.exe main.go",
-    "build:exe": "node scripts/build-exe.js",
     "format": "prettier --write ."
   },
   "devDependencies": {
     "concurrently": "^9.1.0",
     "cross-env": "10.1.0",
-    "esbuild": "0.28.0",
-    "nodemon": "3.1.14",
-    "postject": "1.0.0-alpha.6",
     "prettier": "3.8.3",
     "ts-node": "^10.9.2",
     "tsconfig-paths": "4.2.0",
@@ -32,17 +28,9 @@
   },
   "dependencies": {
     "@types/react-window": "1.8.8",
-    "archiver": "7.0.1",
-    "better-sqlite3": "12.9.0",
-    "bonjour-service": "1.3.0",
-    "cors": "2.8.6",
-    "express": "5.2.1",
-    "multer": "2.1.1",
-    "qrcode": "1.5.4",
     "react-virtualized-auto-sizer": "2.0.3",
     "react-virtuoso": "4.18.5",
     "react-window": "2.2.7",
-    "socket.io": "4.8.3",
     "spark-md5": "3.0.2"
   }
 }
