@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { QrCode, X, UploadCloud, Settings, Scan, RefreshCw, MoreHorizontal, ClipboardList, FolderTree } from 'lucide-react'
+import { QRCodeSVG } from 'qrcode.react'
 import { SharedItem, ServerConfig, FileInfo } from './types'
 import { MessageItem } from './components/MessageItem'
 import { ToastContainer, Toast } from './components/ToastContainer'
@@ -57,6 +58,19 @@ export default function App() {
   const cameraInputRef = useRef<HTMLInputElement>(null)
   const videoInputRef = useRef<HTMLInputElement>(null)
 
+  const [selectedQRip, setSelectedQRip] = useState<string>('')
+
+  const qrUrl = useMemo(() => {
+    if (!selectedQRip) return ''
+    return `http://${selectedQRip}:5678`
+  }, [selectedQRip])
+
+  useEffect(() => {
+    if (config?.ip && !selectedQRip) {
+      setSelectedQRip(config.ip)
+    }
+  }, [config, selectedQRip])
+
   const showToast = useCallback((message: string, type: 'success' | 'error' | 'info' = 'success') => {
     const id = Date.now()
     setToasts(prev => [...prev, { id, message, type }])
@@ -89,6 +103,7 @@ export default function App() {
         })
         const c = await response.json()
         setConfig(c)
+        if (!selectedQRip) setSelectedQRip(c.ip)
 
         const settingsRes = await fetch(`${baseUrl}/api/settings?key=downloadPath`)
         const settings = await settingsRes.json()
@@ -476,19 +491,14 @@ export default function App() {
             {config ? (
               <>
                 <div className="bg-slate-50 p-6 rounded-[2rem] mb-4 border border-slate-100 shadow-inner">
-                  <img src={config.qr} alt="QR" className="w-56 h-56 mx-auto" />
+                  {qrUrl && <QRCodeSVG value={qrUrl} size={224} className="mx-auto" />}
                 </div>
                 <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
-                  {(config as any).allIps?.map((ip: string) => (
+                  {config.allIps?.map((ip: string) => (
                     <button
                       key={ip}
-                      onClick={() => {
-                        const url = `http://${ip}:5678`
-                        setBaseUrl(url)
-                        localStorage.setItem('fast_send_last_url', url)
-                        showToast(`已切换到地址: ${ip}`, 'info')
-                      }}
-                      className={`block w-full px-4 py-2 rounded-xl text-[10px] font-mono border transition-all ${baseUrl.includes(ip) ? 'bg-blue-600 text-white border-blue-600' : 'bg-blue-50 text-blue-600 border-blue-100 hover:bg-blue-100'}`}
+                      onClick={() => setSelectedQRip(ip)}
+                      className={`block w-full px-4 py-2 rounded-xl text-[10px] font-mono border transition-all ${selectedQRip === ip ? 'bg-blue-600 text-white border-blue-600' : 'bg-blue-50 text-blue-600 border-blue-100 hover:bg-blue-100'}`}
                     >
                       http://{ip}:5678
                     </button>

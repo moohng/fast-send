@@ -12,10 +12,10 @@
     "server": "cd packages/server-go && go run main.go",
     "client": "npm run dev --workspace=@fast-send/client",
     "check": "npm run check --workspaces",
-    "build": "npm run build --workspace=@fast-send/client",
+    "build": "npm run build --workspace=@fast-send/client && (if exist packages\\server-go\\dist (rmdir /s /q packages\\server-go\\dist)) && xcopy /e /i /y packages\\client\\dist packages\\server-go\\dist",
     "dev": "concurrently \"npm run client\" \"npm run server\"",
-    "build:go": "cd packages/server-go && go build -o ../../out/FastSend.exe main.go",
-    "build:go2": "cd packages/server-go && go build -ldflags=\"-s -w -H windowsgui\" -o ../../out/FastSend.exe main.go",
+    "build:cli": "npm run build && cd packages/server-go && go build -ldflags=\"-s -w\" -o ../../out/fast-send-cli.exe main.go",
+    "build:exe": "npm run build && cd packages/server-go && go build -ldflags=\"-s -w -H windowsgui\" -o ../../out/FastSend.exe main.go",
     "format": "prettier --write ."
   },
   "devDependencies": {

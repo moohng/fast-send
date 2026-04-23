@@ -1,6 +1,7 @@
 package main
 
 import (
+	"embed"
 	"fastsend/internal/api"
 	"fastsend/internal/config"
 	"fastsend/internal/db"
@@ -8,6 +9,9 @@ import (
 	"fastsend/internal/utils"
 	"fastsend/internal/ws"
 	"fmt"
+	"io/fs"
+	"net/http"
+	"strings"
 	"time"
 
 	"github.com/getlantern/systray"
@@ -15,6 +19,9 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/skratchdot/open-golang/open"
 )
+
+//go:embed all:dist
+var clientDist embed.FS
 
 func main() {
 	config.InitDirs()
@@ -43,11 +50,28 @@ func runHTTPServer(hub *ws.Hub, store *db.Store) {
 	// 静态资源
 	r.Static("/download", config.UploadDir)
 
-	// 查找前端构建产物
-	clientDist := "../../packages/client/dist"
-	r.StaticFS("/web", gin.Dir(clientDist, false))
-	r.GET("/", func(c *gin.Context) {
-		c.File("../../packages/client/dist/index.html")
+	// 使用 embed 托管前端构建产物
+	staticFiles, _ := fs.Sub(clientDist, "dist")
+	fileServer := http.FileServer(http.FS(staticFiles))
+
+	r.NoRoute(func(c *gin.Context) {
+		path := c.Request.URL.Path
+
+		// 如果请求的是静态资源文件（包含 . 且不是 .html）
+		if strings.Contains(path, ".") && !strings.HasSuffix(path, ".html") {
+			// 尝试从 embed 资源中直接提供文件
+			// 这里的 http.FileServer 会自动处理 MIME 类型
+			fileServer.ServeHTTP(c.Writer, c.Request)
+			return
+		}
+
+		// 否则（访问根目录或前端路由），返回 index.html
+		indexData, err := clientDist.ReadFile("dist/index.html")
+		if err != nil {
+			c.String(404, "Frontend not built")
+			return
+		}
+		c.Data(200, "text/html; charset=utf-8", indexData)
 	})
 
 	// API 路由

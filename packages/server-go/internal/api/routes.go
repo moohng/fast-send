@@ -1,7 +1,6 @@
 package api
 
 import (
-	"encoding/base64"
 	"fastsend/internal/config"
 	"fastsend/internal/db"
 	"fastsend/internal/models"
@@ -17,7 +16,6 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/skip2/go-qrcode"
 )
 
 func SetupRoutes(r *gin.Engine, hub *ws.Hub, store *db.Store) {
@@ -30,15 +28,9 @@ func SetupRoutes(r *gin.Engine, hub *ws.Hub, store *db.Store) {
 				primaryIP = ips[0]
 			}
 
-			url := fmt.Sprintf("http://%s:5678", primaryIP)
-			qrData, _ := qrcode.Encode(url, qrcode.Medium, 256)
-			qrBase64 := "data:image/png;base64," + strings.TrimSpace(base64.StdEncoding.EncodeToString(qrData))
-
 			c.JSON(200, gin.H{
 				"ip":     primaryIP,
 				"allIps": ips,
-				"url":    url,
-				"qr":     qrBase64,
 			})
 		})
 
