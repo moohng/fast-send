@@ -8,7 +8,7 @@ import (
 )
 
 func RegistermDNS(port int) *zeroconf.Server {
-	server, err := zeroconf.Register("FastSend-Go", "_fastsend._tcp", "local.", port, []string{"version=2.0.0", "ip=" + utils.GetLocalIP()}, nil)
+	server, err := zeroconf.Register("FastSend-Go", "_fastsend._tcp", "local.", port, []string{"version=2.0.0", "ip=" + utils.GetLocalIP(), "port=5678"}, nil)
 	if err != nil {
 		log.Println("mDNS registration failed:", err)
 		return nil

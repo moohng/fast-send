@@ -24,7 +24,7 @@ export const useDiscovery = (
             console.log('[Discovery] Zeroconf found:', service)
             const ip = service.ipv4Addresses?.[0] || service.host
             if (ip && !ip.includes(':')) {
-              const url = `http://${ip}:${service.port || 3000}`
+              const url = `http://${ip}:${service.port || 5678}`
               setBaseUrl(url)
               localStorage.setItem('fast_send_last_url', url)
               fetchData(url)

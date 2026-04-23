@@ -1,12 +1,11 @@
 import { useState, useEffect, useCallback } from 'react'
-import { Socket } from 'socket.io-client'
 import { SharedItem } from '../types'
 import { Capacitor } from '@capacitor/core'
 import { Directory } from '@capacitor/filesystem'
 
 export const useItems = (
   baseUrl: string,
-  socket: Socket | null,
+  socket: any,
   clientId: string,
   showToast: (m: string, t?: any) => void,
 ) => {

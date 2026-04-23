@@ -25,12 +25,16 @@ var IconData = []byte{
 	0x42, 0x60, 0x82,
 }
 
-func InitDirs() {
-	home, _ := os.UserHomeDir()
-	BaseDir = filepath.Join(home, ".fastsend")
+func UpdateDirs(base string) {
+	BaseDir = base
 	UploadDir = filepath.Join(BaseDir, "uploads")
 	ChunkDir = filepath.Join(BaseDir, "chunks")
 
 	os.MkdirAll(UploadDir, 0755)
 	os.MkdirAll(ChunkDir, 0755)
+}
+
+func InitDirs() {
+	home, _ := os.UserHomeDir()
+	UpdateDirs(filepath.Join(home, ".fastsend"))
 }

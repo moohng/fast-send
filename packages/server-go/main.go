@@ -59,13 +59,13 @@ func runHTTPServer(hub *ws.Hub, store *db.Store) {
 	})
 
 	// 启动 mDNS
-	mdnsServer := discovery.RegistermDNS(3000)
+	mdnsServer := discovery.RegistermDNS(5678)
 	if mdnsServer != nil {
 		defer mdnsServer.Shutdown()
 	}
 
-	fmt.Printf("FastSend Go Server 启动在 http://%s:3000\n", utils.GetLocalIP())
-	r.Run(":3000")
+	fmt.Printf("FastSend Go Server 启动在 http://%s:5678\n", utils.GetLocalIP())
+	r.Run(":5678")
 }
 
 func onReady(hub *ws.Hub, store *db.Store) {
@@ -81,7 +81,7 @@ func onReady(hub *ws.Hub, store *db.Store) {
 	for {
 		select {
 		case <-mOpen.ClickedCh:
-			open.Run("http://localhost:3000")
+			open.Run("http://localhost:5678")
 		case <-mQuit.ClickedCh:
 			systray.Quit()
 			return

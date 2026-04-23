@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
-import { QrCode, X, UploadCloud, Settings, Scan, RefreshCw } from 'lucide-react'
+import { QrCode, X, UploadCloud, Settings, Scan, RefreshCw, MoreHorizontal, ClipboardList, FolderTree } from 'lucide-react'
 import { SharedItem, ServerConfig, FileInfo } from './types'
 import { MessageItem } from './components/MessageItem'
 import { ToastContainer, Toast } from './components/ToastContainer'
@@ -28,7 +28,7 @@ const CLIENT_ID = (() => {
 const isMobile = Capacitor.getPlatform() !== 'web'
 
 export default function App() {
-  const [baseUrl, setBaseUrl] = useState(localStorage.getItem('fast_send_last_url') || `http://${window.location.hostname}:3000`)
+  const [baseUrl, setBaseUrl] = useState(localStorage.getItem('fast_send_last_url') || `http://${window.location.hostname}:5678`)
   const [config, setConfig] = useState<ServerConfig | null>(null)
   const [inputText, setInputText] = useState('')
   const [showQR, setShowQR] = useState(false)
@@ -43,10 +43,14 @@ export default function App() {
 
   const [isMenuOpen, setIsMenuOpen] = useState(false)
   const [activeMenu, setActiveMenu] = useState<{ id: number; x: number; y: number } | null>(null)
+  const [isMoreMenuOpen, setIsMoreMenuOpen] = useState(false)
+  const [isServerLocal, setIsServerLocal] = useState(false)
   const [isDragging, setIsDragging] = useState(false)
   const dragCounter = useRef(0)
   const virtuosoRef = useRef<VirtuosoHandle>(null)
   const [downloadPath, setDownloadPath] = useState('')
+  const [dataDir, setDataDir] = useState('')
+  const [clipboardSync, setClipboardSync] = useState(false)
 
   const fileInputRef = useRef<HTMLInputElement>(null)
   const albumInputRef = useRef<HTMLInputElement>(null)
@@ -89,12 +93,55 @@ export default function App() {
         const settingsRes = await fetch(`${baseUrl}/api/settings?key=downloadPath`)
         const settings = await settingsRes.json()
         if (settings.value) setDownloadPath(settings.value)
+
+        const dataDirRes = await fetch(`${baseUrl}/api/settings?key=baseDir`)
+        const dataDirSettings = await dataDirRes.json()
+        if (dataDirSettings.value) setDataDir(dataDirSettings.value)
+
+        const syncRes = await fetch(`${baseUrl}/api/settings?key=clipboardSync`)
+        const syncSettings = await syncRes.json()
+        setClipboardSync(syncSettings.value === 'true')
+
+        const localRes = await fetch(`${baseUrl}/api/is-local`)
+        const localData = await localRes.json()
+        setIsServerLocal(localData.isLocal)
       } catch (e) {
         console.error('Config fetch error:', e)
       }
     }
     fetchConfig()
   }, [baseUrl])
+
+  const toggleClipboardSync = async () => {
+    const newValue = !clipboardSync
+    setClipboardSync(newValue)
+    try {
+      await fetch(`${baseUrl}/api/settings`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ key: 'clipboardSync', value: newValue ? 'true' : 'false' }),
+      })
+      showToast(newValue ? '已开启剪贴板同步' : '已关闭剪贴板同步', 'info')
+    } catch (e) {
+      showToast('设置失败', 'error')
+      setClipboardSync(!newValue)
+    }
+  }
+
+  const updateDataDir = async (newDir: string) => {
+    if (!newDir || newDir === dataDir) return
+    try {
+      await fetch(`${baseUrl}/api/settings`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ key: 'baseDir', value: newDir }),
+      })
+      setDataDir(newDir)
+      showToast('存储目录已更新', 'success')
+    } catch (e) {
+      showToast('更新失败', 'error')
+    }
+  }
 
   const handleActionClick = (type: string) => {
     setIsMenuOpen(false)
@@ -163,12 +210,12 @@ export default function App() {
       document.body.classList.remove('barcode-scanner-active')
 
       if (barcodes.length > 0) {
-        const url = barcodes[0].rawValue
-        if (url.startsWith('http')) {
-          setBaseUrl(url)
-          localStorage.setItem('fast_send_last_url', url)
+        const qrUrl = barcodes[0].rawValue
+        if (qrUrl && qrUrl.startsWith('http')) {
+          setBaseUrl(qrUrl)
+          localStorage.setItem('fast_send_last_url', qrUrl)
           showToast('已通过扫码连接', 'success')
-          fetchData(url)
+          fetchData(qrUrl)
         }
       }
     } catch (e) {
@@ -231,6 +278,20 @@ export default function App() {
   const lastBackPressTime = useRef<number>(0)
 
   useEffect(() => {
+    const handleGlobalClick = (e: MouseEvent) => {
+      const target = e.target as HTMLElement
+      // 如果点击的是更多按钮或其子元素，不要关闭
+      if (target.closest('.more-menu-trigger') || target.closest('.more-menu-container')) return
+
+      if (activeMenu) setActiveMenu(null)
+      if (isMoreMenuOpen) setIsMoreMenuOpen(false)
+    }
+
+    document.addEventListener('mousedown', handleGlobalClick)
+    return () => document.removeEventListener('mousedown', handleGlobalClick)
+  }, [activeMenu, isMoreMenuOpen])
+
+  useEffect(() => {
     const backHandler = CapApp.addListener('backButton', ({ canGoBack }) => {
       if (previewMedia) {
         setPreviewMedia(null)
@@ -287,33 +348,57 @@ export default function App() {
             </div>
           </div>
         </div>
-        <div className="flex gap-2">
-          <button
-            onClick={() => scan()}
-            className={`p-2.5 bg-slate-100 hover:bg-blue-50 text-slate-600 hover:text-blue-600 rounded-xl transition-all ${isScanning ? "animate-spin" : ""}`}
-          >
-            <RefreshCw size={20} />
-          </button>
+        <div className="flex gap-2 relative">
           <button
             onClick={() => setShowQR(true)}
             className="p-2.5 bg-slate-100 hover:bg-blue-50 text-slate-600 hover:text-blue-600 rounded-xl transition-all"
           >
             <QrCode size={20} />
           </button>
-          {isMobile && (
+
+          {!isMobile ? (
             <button
-              onClick={handleScan}
-              className="p-2.5 bg-blue-600 text-white rounded-xl shadow-lg shadow-blue-200 transition-all active:scale-95"
+              onClick={() => setShowSettings(true)}
+              className="p-2.5 bg-slate-100 hover:bg-blue-50 text-slate-600 hover:text-blue-600 rounded-xl transition-all"
             >
-              <Scan size={20} />
+              <Settings size={20} />
             </button>
+          ) : (
+            <>
+              <button
+                onClick={() => setIsMoreMenuOpen(!isMoreMenuOpen)}
+                className={`p-2.5 rounded-xl transition-all more-menu-trigger ${isMoreMenuOpen ? "bg-blue-600 text-white shadow-lg" : "bg-slate-100 hover:bg-blue-50 text-slate-600 hover:text-blue-600"}`}
+              >
+                <MoreHorizontal size={20} />
+              </button>
+
+              {isMoreMenuOpen && (
+                <div className="absolute top-full right-0 mt-2 w-48 bg-white/90 backdrop-blur-xl border border-slate-200 shadow-2xl rounded-2xl py-2 z-[100] animate-in fade-in zoom-in-95 duration-100 more-menu-container">
+                  <button
+                    onClick={() => { setIsMoreMenuOpen(false); scan(); }}
+                    className="w-full px-4 py-2.5 text-left text-sm hover:bg-blue-50 flex items-center gap-3 text-slate-700 transition-colors"
+                  >
+                    <RefreshCw size={18} className={`text-slate-400 ${isScanning ? "animate-spin" : ""}`} />
+                    <span className="font-medium">发现设备</span>
+                  </button>
+                  <button
+                    onClick={() => { setIsMoreMenuOpen(false); handleScan(); }}
+                    className="w-full px-4 py-2.5 text-left text-sm hover:bg-blue-50 flex items-center gap-3 text-slate-700 transition-colors"
+                  >
+                    <Scan size={18} className="text-slate-400" />
+                    <span className="font-medium">扫码连接</span>
+                  </button>
+                  <button
+                    onClick={() => { setIsMoreMenuOpen(false); setShowSettings(true); }}
+                    className="w-full px-4 py-2.5 text-left text-sm hover:bg-blue-50 flex items-center gap-3 text-slate-700 transition-colors"
+                  >
+                    <Settings size={18} className="text-slate-400" />
+                    <span className="font-medium">系统设置</span>
+                  </button>
+                </div>
+              )}
+            </>
           )}
-          <button
-            onClick={() => setShowSettings(true)}
-            className="p-2.5 bg-slate-100 hover:bg-blue-50 text-slate-600 hover:text-blue-600 rounded-xl transition-all"
-          >
-            <Settings size={20} />
-          </button>
         </div>
       </div>
 
@@ -350,7 +435,11 @@ export default function App() {
               />
             </div>
           )}
-          onScroll={() => activeMenu && setActiveMenu(null)}
+          onScroll={() => {
+            if (activeMenu) setActiveMenu(null)
+            if (isMenuOpen) setIsMenuOpen(false)
+            if (isMoreMenuOpen) setIsMoreMenuOpen(false)
+          }}
         />
         {items.length === 0 && (
           <div className="absolute inset-0 flex flex-col items-center justify-center text-slate-300 pointer-events-none">
@@ -394,14 +483,14 @@ export default function App() {
                     <button
                       key={ip}
                       onClick={() => {
-                        const url = `http://${ip}:3000`
+                        const url = `http://${ip}:5678`
                         setBaseUrl(url)
                         localStorage.setItem('fast_send_last_url', url)
                         showToast(`已切换到地址: ${ip}`, 'info')
                       }}
                       className={`block w-full px-4 py-2 rounded-xl text-[10px] font-mono border transition-all ${baseUrl.includes(ip) ? 'bg-blue-600 text-white border-blue-600' : 'bg-blue-50 text-blue-600 border-blue-100 hover:bg-blue-100'}`}
                     >
-                      http://{ip}:3000
+                      http://{ip}:5678
                     </button>
                   ))}
                 </div>
@@ -425,22 +514,82 @@ export default function App() {
               <button onClick={() => setShowSettings(false)} className="p-2 hover:bg-slate-100 rounded-full"><X size={20} /></button>
             </div>
             <div className="space-y-6">
+              {!isServerLocal && (
+                <div>
+                  <label className="block text-xs font-bold text-slate-400 uppercase mb-2">服务器地址 (电脑 IP)</label>
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={baseUrl}
+                      onChange={(e) => {
+                        const val = e.target.value
+                        setBaseUrl(val)
+                        localStorage.setItem('fast_send_last_url', val)
+                      }}
+                      placeholder="http://192.168.x.x:5678"
+                      className="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-xs text-slate-600 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                    <button onClick={() => { fetchData(); showToast('已尝试重新连接'); }} className="p-2.5 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-colors tracking-tighter text-[10px] font-bold">连接</button>
+                  </div>
+                </div>
+              )}
+
+              <div className="h-px bg-slate-100" />
+
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 bg-blue-50 text-blue-600 rounded-xl flex items-center justify-center">
+                    <ClipboardList size={20} />
+                  </div>
+                  <div>
+                    <p className="text-sm font-bold text-slate-800">剪贴板同步</p>
+                    <p className="text-[10px] text-slate-400 font-medium">在所有设备间自动同步剪贴板文本</p>
+                  </div>
+                </div>
+                <button
+                  onClick={toggleClipboardSync}
+                  className={`w-12 h-6 rounded-full transition-all relative ${clipboardSync ? 'bg-blue-600 shadow-lg shadow-blue-200' : 'bg-slate-200'}`}
+                >
+                  <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all shadow-sm ${clipboardSync ? 'left-7' : 'left-1'}`} />
+                </button>
+              </div>
+
+              <div className="h-px bg-slate-100" />
+
               <div>
-                <label className="block text-xs font-bold text-slate-400 uppercase mb-2">服务器地址 (电脑 IP)</label>
+                <div className="flex items-center gap-2 mb-2">
+                  <FolderTree size={16} className="text-blue-600" />
+                  <label className="block text-xs font-bold text-slate-400 uppercase">服务端存储目录</label>
+                </div>
                 <div className="flex gap-2">
                   <input
                     type="text"
-                    value={baseUrl}
-                    onChange={(e) => {
-                      const val = e.target.value
-                      setBaseUrl(val)
-                      localStorage.setItem('fast_send_last_url', val)
-                    }}
-                    placeholder="http://192.168.x.x:3000"
-                    className="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-xs text-slate-600 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    value={dataDir}
+                    readOnly
+                    placeholder="尚未设置存储目录"
+                    className="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-[10px] text-slate-400 cursor-not-allowed font-mono outline-none"
                   />
-                  <button onClick={() => { fetchData(); showToast('已尝试重新连接'); }} className="p-2.5 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-colors tracking-tighter text-[10px] font-bold">连接</button>
+                  {isServerLocal && (
+                    <button
+                      onClick={async () => {
+                        try {
+                          const res = await fetch(`${baseUrl}/api/utils/select-folder`)
+                          const data = await res.json()
+                          if (data.path) {
+                            updateDataDir(data.path)
+                          }
+                        } catch (e) {
+                          showToast('无法打开文件夹选择器', 'error')
+                        }
+                      }}
+                      className="px-4 py-2.5 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-colors text-[10px] font-bold flex items-center gap-2 shadow-lg shadow-blue-200"
+                    >
+                      <FolderTree size={14} />
+                      <span>选择目录</span>
+                    </button>
+                  )}
                 </div>
+                <p className="mt-2 text-[9px] text-amber-500 font-medium">注意：更改后服务端将立即开始使用新目录存储文件</p>
               </div>
             </div>
           </div>

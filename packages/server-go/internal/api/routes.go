@@ -30,7 +30,7 @@ func SetupRoutes(r *gin.Engine, hub *ws.Hub, store *db.Store) {
 				primaryIP = ips[0]
 			}
 
-			url := fmt.Sprintf("http://%s:3000", primaryIP)
+			url := fmt.Sprintf("http://%s:5678", primaryIP)
 			qrData, _ := qrcode.Encode(url, qrcode.Medium, 256)
 			qrBase64 := "data:image/png;base64," + strings.TrimSpace(base64.StdEncoding.EncodeToString(qrData))
 
@@ -41,6 +41,28 @@ func SetupRoutes(r *gin.Engine, hub *ws.Hub, store *db.Store) {
 				"qr":     qrBase64,
 			})
 		})
+
+
+			api.GET("/is-local", func(c *gin.Context) {
+				clientIP := c.ClientIP()
+				isLocal := clientIP == "127.0.0.1" || clientIP == "::1"
+				c.JSON(200, gin.H{"isLocal": isLocal})
+			})
+
+			api.GET("/utils/select-folder", func(c *gin.Context) {
+				clientIP := c.ClientIP()
+				if clientIP != "127.0.0.1" && clientIP != "::1" {
+					c.JSON(403, gin.H{"error": "Only localhost can trigger picker"})
+					return
+				}
+
+				path, err := utils.SelectFolder()
+				if err != nil {
+					c.JSON(500, gin.H{"error": err.Error()})
+					return
+				}
+				c.JSON(200, gin.H{"path": path})
+			})
 
 		api.GET("/settings", func(c *gin.Context) {
 			key := c.Query("key")
@@ -60,6 +82,9 @@ func SetupRoutes(r *gin.Engine, hub *ws.Hub, store *db.Store) {
 			if err := store.SetSetting(input.Key, input.Value); err != nil {
 				c.JSON(500, gin.H{"error": err.Error()})
 				return
+			}
+			if input.Key == "baseDir" {
+				config.UpdateDirs(input.Value)
 			}
 			c.JSON(200, gin.H{"success": true})
 		})
