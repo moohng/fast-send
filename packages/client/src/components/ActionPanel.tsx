@@ -40,7 +40,7 @@ export const ActionPanel: React.FC<ActionPanelProps> = ({
 }) => {
   return (
     <div
-      className={`bg-white border-t border-slate-100 transition-all duration-300 ease-in-out overflow-hidden ${
+      className={`bg-white border-t border-slate-100 transition-all duration-300 ease-in-out overflow-hidden action-panel-container ${
         isOpen ? 'max-h-[280px] opacity-100' : 'max-h-0 opacity-0 pointer-events-none'
       }`}
     >

@@ -13,6 +13,8 @@ import { useSocket } from './hooks/useSocket'
 import { useItems } from './hooks/useItems'
 import { useUpload } from './hooks/useUpload'
 import { useDiscovery } from './hooks/useDiscovery'
+import { requestNotificationPermission } from './utils/notifications'
+import { saveToAlbum } from './utils/media'
 import { App as CapApp } from '@capacitor/app'
 import { Capacitor } from '@capacitor/core'
 import { Virtuoso, VirtuosoHandle } from 'react-virtuoso'
@@ -85,13 +87,8 @@ export default function App() {
   const { scan, isScanning } = useDiscovery(baseUrl, setBaseUrl, fetchData, showToast)
 
   useEffect(() => {
-    if (virtuosoRef.current) {
-      virtuosoRef.current.scrollToIndex({
-        index: items.length - 1,
-        behavior: 'smooth'
-      })
-    }
-  }, [items.length])
+    requestNotificationPermission()
+  }, [])
 
   useEffect(() => {
     if (!baseUrl) return
@@ -295,11 +292,17 @@ export default function App() {
   useEffect(() => {
     const handleGlobalClick = (e: MouseEvent) => {
       const target = e.target as HTMLElement
-      // 如果点击的是更多按钮或其子元素，不要关闭
-      if (target.closest('.more-menu-trigger') || target.closest('.more-menu-container')) return
+      // 如果点击的是更多按钮或其子元素，或者加号按钮和面板，不要关闭
+      if (
+        target.closest('.more-menu-trigger') ||
+        target.closest('.more-menu-container') ||
+        target.closest('.plus-button') ||
+        target.closest('.action-panel-container')
+      ) return
 
       if (activeMenu) setActiveMenu(null)
       if (isMoreMenuOpen) setIsMoreMenuOpen(false)
+      if (isMenuOpen) setIsMenuOpen(false)
     }
 
     document.addEventListener('mousedown', handleGlobalClick)
@@ -422,6 +425,8 @@ export default function App() {
           ref={virtuosoRef}
           data={items}
           className="no-scrollbar"
+          followOutput="smooth"
+          atBottomThreshold={60}
           initialTopMostItemIndex={items.length - 1}
           overscan={1000}
           itemContent={(index, item) => (
@@ -440,6 +445,7 @@ export default function App() {
                 onPreview={(url, type, idx, files) =>
                   setPreviewMedia({ url, type, index: idx, items: files })
                 }
+                onSaveToAlbum={(url, filename) => saveToAlbum(url, filename, showToast)}
                 isMenuOpen={activeMenu?.id === item.id}
                 onToggleMenu={handleToggleMenu}
                 menuPos={
@@ -452,7 +458,6 @@ export default function App() {
           )}
           onScroll={() => {
             if (activeMenu) setActiveMenu(null)
-            if (isMenuOpen) setIsMenuOpen(false)
             if (isMoreMenuOpen) setIsMoreMenuOpen(false)
           }}
         />
@@ -615,6 +620,7 @@ export default function App() {
             initialIndex={previewMedia.index || 0}
             baseUrl={baseUrl}
             onClose={() => setPreviewMedia(null)}
+            onSaveToAlbum={(url, filename) => saveToAlbum(url, filename, showToast)}
           />
         ) : (
           <div className="fixed inset-0 z-[200] bg-black/95 backdrop-blur-xl flex items-center justify-center p-4" onClick={() => setPreviewMedia(null)}>

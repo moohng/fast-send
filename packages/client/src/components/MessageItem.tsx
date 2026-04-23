@@ -33,6 +33,7 @@ interface Props {
   baseUrl: string
   onDelete: (id: number) => void
   onPreview: (url: string, type: 'image' | 'video', index?: number, items?: FileInfo[]) => void
+  onSaveToAlbum?: (url: string, filename: string) => void
   isMenuOpen: boolean
   onToggleMenu: (id: number | null, rect?: DOMRect) => void
   menuPos: { x: number; y: number } | null
@@ -104,7 +105,7 @@ const MediaGrid: React.FC<{
 }
 
 export const MessageItem: React.FC<Props> = React.memo(
-  ({ item, isMe, baseUrl, onDelete, onPreview, isMenuOpen, onToggleMenu, menuPos, style }) => {
+  ({ item, isMe, baseUrl, onDelete, onPreview, onSaveToAlbum, isMenuOpen, onToggleMenu, menuPos, style }) => {
     const [copied, setCopied] = useState(false)
     const menuBtnRef = useRef<HTMLButtonElement>(null)
 
@@ -257,7 +258,7 @@ export const MessageItem: React.FC<Props> = React.memo(
               <button
                 ref={menuBtnRef}
                 onClick={handleToggle}
-                className={`mt-2 p-1.5 rounded-full transition-colors shrink-0 ${isMenuOpen ? 'bg-blue-50 text-blue-600' : 'text-slate-300 hover:bg-slate-100 hover:text-slate-600'}`}
+                className={`mt-2 p-1.5 rounded-full transition-colors shrink-0 more-menu-trigger ${isMenuOpen ? 'bg-blue-50 text-blue-600' : 'text-slate-300 hover:bg-slate-100 hover:text-slate-600'}`}
               >
                 <MoreVertical size={16} />
               </button>
@@ -267,7 +268,7 @@ export const MessageItem: React.FC<Props> = React.memo(
 
         {isMenuOpen && menuPos && (
           <div
-            className="fixed z-[1000] bg-white/90 backdrop-blur-xl border border-slate-200 shadow-2xl rounded-2xl py-1.5 min-w-[160px] animate-in fade-in zoom-in-95 duration-100"
+            className="fixed z-[1000] bg-white/90 backdrop-blur-xl border border-slate-200 shadow-2xl rounded-2xl py-1.5 min-w-[160px] animate-in fade-in zoom-in-95 duration-100 more-menu-container"
             style={{ top: menuPos.y, left: menuPos.x }}
             onClick={(e) => e.stopPropagation()}
           >
@@ -292,6 +293,19 @@ export const MessageItem: React.FC<Props> = React.memo(
                 <Download size={16} className="text-slate-400" />
                 <span className="font-medium">下载文件</span>
               </a>
+            )}
+
+            {(isImg || isVid) && Capacitor.isNativePlatform() && (
+              <button
+                onClick={() => {
+                  onSaveToAlbum?.(downloadUrl, item.originalName || 'media');
+                  onToggleMenu(null);
+                }}
+                className="w-full px-4 py-2 text-left text-sm hover:bg-blue-50 flex items-center gap-3 text-slate-700 transition-colors"
+              >
+                <ImageIcon size={16} className="text-slate-400" />
+                <span className="font-medium">保存到相册</span>
+              </button>
             )}
 
             <div className="h-px bg-slate-100 my-1 mx-2" />

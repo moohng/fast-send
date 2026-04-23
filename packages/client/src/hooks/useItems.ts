@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { SharedItem } from '../types'
 import { Capacitor } from '@capacitor/core'
 import { Directory } from '@capacitor/filesystem'
+import { sendNotification } from '../utils/notifications'
 
 export const useItems = (
   baseUrl: string,
@@ -75,26 +76,6 @@ export const useItems = (
         })
         const i = await itemsRes.json()
         setItems([...i].reverse())
-
-        // 这里的逻辑可以改为：拉取列表后，自动同步还没同步过的文件
-        if (Capacitor.isNativePlatform()) {
-          i.forEach((item: SharedItem) => {
-            if (item.senderId === clientId) return
-            if (item.type === 'file' && item.filename) {
-              autoDownloadForMobile(item)
-            } else if (item.type === 'gallery' && item.files) {
-              item.files.forEach(f => {
-                autoDownloadForMobile({
-                  ...item,
-                  type: 'file',
-                  filename: f.filename,
-                  originalName: f.originalName,
-                  size: f.size
-                })
-              })
-            }
-          })
-        }
       } catch (e: any) {
         console.error('[Items] Fetch error:', e.message)
       }
@@ -119,23 +100,16 @@ export const useItems = (
         item.senderId !== clientId &&
         !['CLIPBOARD_SYNC', 'CLIPBOARD_IMAGE'].includes(item.senderId)
       ) {
-        showToast('收到新内容', 'info')
-        if (Capacitor.isNativePlatform()) {
-          if (item.type === 'file') {
-            autoDownloadForMobile(item)
-          } else if (item.type === 'gallery' && item.files) {
-            // 批量下载画廊中的所有文件
-            item.files.forEach(f => {
-              autoDownloadForMobile({
-                ...item,
-                type: 'file',
-                filename: f.filename,
-                originalName: f.originalName,
-                size: f.size
-              })
-            })
-          }
+        // 构建通知内容
+        let body = '收到新内容'
+        if (item.type === 'text') {
+          body = item.content || '收到一段文本'
+        } else if (item.type === 'file') {
+          body = `收到文件: ${item.originalName || '未知文件'}`
+        } else if (item.type === 'gallery') {
+          body = `收到 ${item.files?.length || 0} 张图片`
         }
+        sendNotification('FastSend', body)
       }
     })
 
