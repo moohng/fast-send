@@ -13,6 +13,7 @@ dependencies {
     implementation project(':capacitor-clipboard')
     implementation project(':capacitor-filesystem')
     implementation project(':capacitor-network')
+    implementation project(':capacitor-status-bar')
     implementation "org.jmdns:jmdns:3.5.5"
 }
 
