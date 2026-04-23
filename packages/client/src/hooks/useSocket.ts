@@ -1,6 +1,12 @@
 import { useState, useEffect, useRef } from 'react'
-import { io, Socket } from 'socket.io-client'
 import { DeviceInfo } from '../types'
+
+// 模拟 Socket.io 的接口，避免修改其他组件
+interface FakeSocket {
+  on: (event: string, cb: any) => void
+  off: (event: string) => void
+  emit: (event: string, data: any) => void
+}
 
 export const useSocket = (
   baseUrl: string,
@@ -9,39 +15,58 @@ export const useSocket = (
   isElectron: boolean,
 ) => {
   const [devices, setDevices] = useState<DeviceInfo[]>([])
-  const socketRef = useRef<Socket | null>(null)
+  const wsRef = useRef<WebSocket | null>(null)
+  const listenersRef = useRef<Record<string, any[]>>({})
+
+  const socket: FakeSocket = {
+    on: (event, cb) => {
+      if (!listenersRef.current[event]) listenersRef.current[event] = []
+      listenersRef.current[event].push(cb)
+    },
+    off: (event) => {
+      delete listenersRef.current[event]
+    },
+    emit: (event, data) => {
+      if (wsRef.current?.readyState === WebSocket.OPEN) {
+        wsRef.current.send(JSON.stringify({ event, data }))
+      }
+    },
+  }
 
   useEffect(() => {
     if (!baseUrl) return
 
-    const socket = io(baseUrl, {
-      transports: ['websocket', 'polling'], // 强制优先 websocket
-      reconnectionAttempts: 5,
-      timeout: 10000,
-    })
-    socketRef.current = socket
-    console.log('[Socket] Connecting to:', baseUrl)
+    const wsUrl = baseUrl.replace('http', 'ws') + '/ws'
+    const ws = new WebSocket(wsUrl)
+    wsRef.current = ws
+    console.log('[Socket] Connecting to:', wsUrl)
 
-    socket.on('connect', () => {
+    ws.onopen = () => {
       console.log('[Socket] Connected! Client ID:', clientId)
       socket.emit('register', {
         id: clientId,
         type: isMobile ? 'mobile' : isElectron ? 'desktop' : 'web',
       })
-    })
+    }
 
-    socket.on('connect_error', (err) => {
-      console.error('[Socket] Connection error:', err.message)
-    })
+    ws.onmessage = (e) => {
+      try {
+        const { event, data } = JSON.parse(e.data)
+        if (event === 'devices-update') setDevices(data)
+        const callbacks = listenersRef.current[event] || []
+        callbacks.forEach((cb) => cb(data))
+      } catch (err) {
+        console.warn('WS message error:', err)
+      }
+    }
 
-    socket.on('devices-update', (data: DeviceInfo[]) => {
-      setDevices(data)
-    })
+    ws.onerror = (err) => console.error('[Socket] Connection error:', err)
+    ws.onclose = () => console.log('[Socket] Closed')
 
     return () => {
-      socket.close()
+      ws.close()
     }
   }, [baseUrl, clientId, isMobile, isElectron])
 
-  return { socket: socketRef.current, devices }
+  return { socket, devices }
 }

@@ -1,5 +1,5 @@
 ﻿import React from 'react'
-import { Paperclip, Image, Camera, Video, FolderPlus, LucideIcon } from 'lucide-react'
+import { Paperclip, Image, Camera, Video, FolderPlus, LucideIcon, CloudUpload } from 'lucide-react'
 
 interface ActionButtonProps {
   icon: LucideIcon
@@ -45,7 +45,7 @@ export const ActionPanel: React.FC<ActionPanelProps> = ({
       }`}
     >
       <div className="p-8 mx-auto">
-        <div className={`grid gap-8 grid-cols-4`}>
+        <div className={`grid gap-x-8 gap-y-6 grid-cols-4`}>
           <ActionButton icon={Paperclip} label="文件" onClick={() => onAction('file')} />
           {isMobile && (
             <>
@@ -54,6 +54,12 @@ export const ActionPanel: React.FC<ActionPanelProps> = ({
                 label="相册"
                 color="emerald"
                 onClick={() => onAction('album')}
+              />
+              <ActionButton
+                icon={CloudUpload}
+                label="备份"
+                color="indigo"
+                onClick={() => onAction('backup')}
               />
               <ActionButton
                 icon={Camera}

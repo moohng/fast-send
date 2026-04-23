@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react'
-import { QrCode, X, UploadCloud, Settings, FolderOpen } from 'lucide-react'
+import { QrCode, X, UploadCloud, Settings, FolderOpen, Scan } from 'lucide-react'
 import { SharedItem, ServerConfig } from './types'
 import { MessageItem } from './components/MessageItem'
 import { ToastContainer, Toast } from './components/ToastContainer'
@@ -13,6 +13,7 @@ import { useUpload } from './hooks/useUpload'
 import { useDiscovery } from './hooks/useDiscovery'
 import { RefreshCw } from 'lucide-react'
 import { App as CapApp } from '@capacitor/app'
+import { Capacitor } from '@capacitor/core'
 
 const CLIENT_ID = (() => {
   let id = localStorage.getItem('fast_send_client_id')
@@ -112,6 +113,90 @@ export default function App() {
     if (type === 'album') albumInputRef.current?.click()
     if (type === 'camera') cameraInputRef.current?.click()
     if (type === 'video') videoInputRef.current?.click()
+    if (type === 'backup') handleBackup()
+  }
+
+  const handleBackup = async () => {
+    if (!isMobile || !baseUrl) return
+    try {
+      const { Camera } = await import('@capacitor/camera')
+
+      // 调用系统多选器，支持一次选择多张图
+      const result = await Camera.pickImages({
+        quality: 100,
+        limit: 0, // 0 表示无限制
+      })
+
+      if (!result.photos || result.photos.length === 0) return
+
+      showToast(`正在备份 ${result.photos.length} 项...`, 'info')
+      let count = 0
+
+      for (const photo of result.photos) {
+        try {
+          // 使用 webPath 直接 fetch，效率最高
+          const response = await fetch(photo.webPath)
+          const blob = await response.blob()
+
+          // 构造文件名 (从路径提取或生成)
+          const fileName = photo.path?.split('/').pop() || `backup_${Date.now()}.${photo.format}`
+          const file = new File([blob], fileName, { type: blob.type })
+
+          await uploadFile(file)
+          count++
+        } catch (e: any) {
+          console.error('[Backup] Single upload failed:', e.message)
+        }
+      }
+
+      showToast(`成功备份 ${count} 张照片`)
+    } catch (e: any) {
+      console.error('[Backup] Picker error:', e)
+      if (e.message !== 'User cancelled photos app') {
+        showToast(`备份失败: ${e.message}`, 'error')
+      }
+    }
+  }
+
+  const handleScan = async () => {
+    if (!isMobile) return
+    try {
+      const { BarcodeScanner } = await import('@capacitor-mlkit/barcode-scanning')
+      const isSupported = await BarcodeScanner.isSupported()
+      if (!isSupported.supported) {
+        showToast('设备不支持扫码', 'error')
+        return
+      }
+
+      // 检查并请求权限
+      const status = await BarcodeScanner.checkPermissions()
+      if (status.camera !== 'granted') {
+        const res = await BarcodeScanner.requestPermissions()
+        if (res.camera !== 'granted') {
+          showToast('未获得相机权限', 'error')
+          return
+        }
+      }
+
+      // 开始扫描前隐藏 Web 视图背景（扫码插件要求）
+      document.body.classList.add('barcode-scanner-active')
+
+      const { barcodes } = await BarcodeScanner.scan()
+      document.body.classList.remove('barcode-scanner-active')
+
+      if (barcodes.length > 0) {
+        const url = barcodes[0].rawValue
+        if (url.startsWith('http')) {
+          setBaseUrl(url)
+          localStorage.setItem('fast_send_last_url', url)
+          showToast('已通过扫码连接', 'success')
+          fetchData(url)
+        }
+      }
+    } catch (e) {
+      console.error('Scan error:', e)
+      document.body.classList.remove('barcode-scanner-active')
+    }
   }
 
   const handleDragEnter = (e: React.DragEvent) => {
@@ -245,6 +330,14 @@ export default function App() {
           >
             <QrCode size={20} />
           </button>
+          {isMobile && (
+            <button
+              onClick={handleScan}
+              className="p-2.5 bg-blue-600 text-white rounded-xl shadow-lg shadow-blue-200 transition-all active:scale-95"
+            >
+              <Scan size={20} />
+            </button>
+          )}
           <button
             onClick={() => setShowSettings(true)}
             className="p-2.5 bg-slate-100 hover:bg-blue-50 text-slate-600 hover:text-blue-600 rounded-xl transition-all"

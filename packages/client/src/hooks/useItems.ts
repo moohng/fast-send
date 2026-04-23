@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { Socket } from 'socket.io-client'
 import { SharedItem } from '../types'
 import { Capacitor } from '@capacitor/core'
+import { Directory } from '@capacitor/filesystem'
 
 export const useItems = (
   baseUrl: string,
@@ -24,60 +25,41 @@ export const useItems = (
         console.log('[Sync] Auto downloading:', item.originalName || item.filename)
         const downloadUrl = `${baseUrl}/download/${item.filename}`
 
-        // 动态导入插件，避免非原生环境下报错
-        const { Filesystem, Directory } = await import('@capacitor/filesystem')
+        // 1. 准备路径和目录
+        const fileName = item.originalName || item.filename || 'unknown'
+        const isMedia = fileName.match(/\.(jpg|jpeg|png|gif|mp4|mov|webm)$/i)
+        const directory = isMedia ? Directory.ExternalStorage : Directory.Documents
+        const folder = isMedia ? 'DCIM/FastSend' : 'FastSend'
 
-        // 1. 获取文件内容
-        const response = await fetch(downloadUrl)
-        const blob = await response.blob()
+        let finalPath = `${folder}/${fileName}`
+        let finalDir = directory
 
-        // 2. 转为 Base64 (Capacitor Filesystem 插件的要求)
-        const reader = new FileReader()
-        reader.readAsDataURL(blob)
-        reader.onloadend = async () => {
-          const base64data = reader.result as string
-          const base64Content = base64data.split(',')[1]
-
-          try {
-            const fileName = item.originalName || item.filename || 'unknown'
-            const isMedia = fileName.match(/\.(jpg|jpeg|png|gif|mp4|mov|webm)$/i)
-            const directory = isMedia ? Directory.Documents : Directory.ExternalStorage
-            const folder = isMedia ? 'FastSend/Media' : 'FastSend/Files'
-
-            // 如果是图片或视频，尝试保存到 DCIM (相册)
-            let finalPath = `${folder}/${fileName}`
-            let finalDir = directory
-
-            if (isMedia && Capacitor.isNativePlatform()) {
-              // 在 Android 上，DCIM 是相册目录
-              finalDir = Directory.ExternalStorage
-              finalPath = `DCIM/FastSend/${fileName}`
-            }
-
-            await Filesystem.writeFile({
-              path: finalPath,
-              data: base64Content,
-              directory: finalDir,
-              recursive: true,
-            })
-
-            localStorage.setItem(key, 'true')
-            showToast(isMedia ? '媒体已保存到相册' : `文件已同步: ${fileName}`)
-          } catch (e: any) {
-            const fileName = item.originalName || item.filename || 'unknown'
-            // 兜底：如果 ExternalStorage 不可用，尝试 Documents
-            await Filesystem.writeFile({
-              path: `FastSend/${fileName}`,
-              data: base64Content,
-              directory: Directory.Documents,
-              recursive: true,
-            })
-            localStorage.setItem(key, 'true')
-            showToast(`文件已同步到文档目录`)
-          }
+        // 显式先创建目录
+        const { Filesystem } = await import('@capacitor/filesystem')
+        try {
+          const folderPath = finalPath.substring(0, finalPath.lastIndexOf('/'))
+          await Filesystem.mkdir({
+            path: folderPath,
+            directory: finalDir,
+            recursive: true,
+          })
+        } catch (e) {
+          // 目录已存在会报错，忽略即可
         }
-      } catch (e) {
-        console.error('[Sync] Auto download failed:', e)
+
+        // 2. 使用原生下载
+        await Filesystem.downloadFile({
+          url: downloadUrl,
+          path: finalPath,
+          directory: finalDir,
+          recursive: true,
+        })
+
+        localStorage.setItem(key, 'true')
+        showToast(isMedia ? '媒体已保存到相册' : `文件已同步: ${fileName}`)
+      } catch (e: any) {
+        console.error('[Sync] Download failed:', e)
+        showToast(`同步失败: ${item.originalName}`, 'error')
       }
     },
     [baseUrl, showToast],

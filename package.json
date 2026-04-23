@@ -14,6 +14,8 @@
     "build": "npm run build --workspaces",
     "dev": "concurrently \"npm run client\" \"npm run server\"",
     "start": "npm run build && cross-env START_SERVER=true npm run server",
+    "build:go": "cd packages/server-go && go build -o ../../out/FastSend.exe main.go",
+    "build:go2": "cd packages/server-go && go build -ldflags=\"-s -w -H windowsgui\" -o ../../out/FastSend.exe main.go",
     "build:exe": "node scripts/build-exe.js",
     "format": "prettier --write ."
   },

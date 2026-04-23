@@ -19,6 +19,10 @@
   }
 }
 
+body.barcode-scanner-active {
+  visibility: hidden;
+}
+
 /* 即使隐藏了滚动条，依然保留滚动功能 */
 .overflow-y-auto {
   -webkit-overflow-scrolling: touch;
