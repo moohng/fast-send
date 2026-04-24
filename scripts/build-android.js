@@ -25,8 +25,19 @@ try {
   execSync('npx cap sync android', { cwd: clientDir, stdio: 'inherit' });
 
   // 2. 执行 Gradle 构建
-  const gradleCmd = process.platform === 'win32' ? 'gradlew.bat' : './gradlew';
+  const isWin = process.platform === 'win32';
+  const gradleCmd = isWin ? 'gradlew.bat' : './gradlew';
   const task = buildType === 'release' ? 'assembleRelease' : 'assembleDebug';
+
+  // 在 Linux/macOS 上确保 gradlew 有执行权限
+  if (!isWin) {
+    try {
+      console.log('🔐 Setting execution permission for gradlew...');
+      execSync(`chmod +x ${path.join(androidDir, 'gradlew')}`, { stdio: 'inherit' });
+    } catch (err) {
+      console.warn('⚠️ Failed to set permission for gradlew, build might fail.');
+    }
+  }
 
   console.log(`🏗️ Running Gradle task: ${task}...`);
   execSync(`${gradleCmd} ${task} --no-daemon`, {
