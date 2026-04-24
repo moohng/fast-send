@@ -59,6 +59,25 @@ export default function App() {
 
   const [selectedQRip, setSelectedQRip] = useState<string>('')
 
+  // 持久化已保存记录（key 格式：file_{itemId} | gallery_{itemId}）
+  const [savedItems, setSavedItems] = useState<Set<string>>(() => {
+    try {
+      const raw = localStorage.getItem('fast_send_saved_items')
+      return raw ? new Set(JSON.parse(raw)) : new Set()
+    } catch {
+      return new Set()
+    }
+  })
+
+  const addSavedItem = useCallback((key: string) => {
+    setSavedItems(prev => {
+      const next = new Set(prev)
+      next.add(key)
+      try { localStorage.setItem('fast_send_saved_items', JSON.stringify([...next])) } catch {}
+      return next
+    })
+  }, [])
+
   useEffect(() => {
     if (config?.ip && !selectedQRip) {
       setSelectedQRip(config.ip)
@@ -418,9 +437,19 @@ export default function App() {
                 onPreview={(url, type, idx, files) =>
                   setPreviewMedia({ url, type, index: idx, items: files })
                 }
-                onSaveToAlbum={(url, filename) => saveToAlbum(url, filename, showToast)}
-                onSaveAllMedia={(files, bu) => saveAllMediaFromGallery(files, bu, showToast)}
-                onSaveFileToLocal={(url, filename) => saveFileToLocal(url, filename, showToast)}
+                onSaveToAlbum={async (url, filename) => {
+                  const ok = await saveToAlbum(url, filename, showToast)
+                  if (ok) addSavedItem(`file_${item.id}`)
+                }}
+                onSaveAllMedia={async (files, bu) => {
+                  const ok = await saveAllMediaFromGallery(files, bu, showToast)
+                  if (ok) addSavedItem(`gallery_${item.id}`)
+                }}
+                onSaveFileToLocal={async (url, filename) => {
+                  const ok = await saveFileToLocal(url, filename, showToast)
+                  if (ok) addSavedItem(`file_${item.id}`)
+                }}
+                savedItems={savedItems}
                 isMenuOpen={activeMenu?.id === item.id}
                 onToggleMenu={handleToggleMenu}
                 menuPos={

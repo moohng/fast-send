@@ -37,6 +37,7 @@ interface Props {
   onSaveToAlbum?: (url: string, filename: string) => void
   onSaveAllMedia?: (files: FileInfo[], baseUrl: string) => void
   onSaveFileToLocal?: (url: string, filename: string) => void
+  savedItems?: Set<string>
   isMenuOpen: boolean
   onToggleMenu: (id: number | null, rect?: DOMRect) => void
   menuPos: { x: number; y: number } | null
@@ -108,7 +109,7 @@ const MediaGrid: React.FC<{
 }
 
 export const MessageItem: React.FC<Props> = React.memo(
-  ({ item, isMe, baseUrl, onDelete, onPreview, onSaveToAlbum, onSaveAllMedia, onSaveFileToLocal, isMenuOpen, onToggleMenu, menuPos, style }) => {
+  ({ item, isMe, baseUrl, onDelete, onPreview, onSaveToAlbum, onSaveAllMedia, onSaveFileToLocal, savedItems, isMenuOpen, onToggleMenu, menuPos, style }) => {
     const [copied, setCopied] = useState(false)
     const menuBtnRef = useRef<HTMLButtonElement>(null)
 
@@ -118,6 +119,10 @@ export const MessageItem: React.FC<Props> = React.memo(
     const downloadUrl =
       item.type === 'file' ? `${baseUrl}/download/${item.filename}` : ''
     const contentToCopy = item.type === 'text' ? item.content : downloadUrl
+
+    // 已保存状态
+    const isFileSaved = savedItems?.has(`file_${item.id}`) ?? false
+    const isGallerySaved = savedItems?.has(`gallery_${item.id}`) ?? false
 
     const handleCopy = useCallback(
       async (e: React.MouseEvent) => {
@@ -316,10 +321,16 @@ export const MessageItem: React.FC<Props> = React.memo(
                   onSaveToAlbum?.(downloadUrl, item.originalName || 'media');
                   onToggleMenu(null);
                 }}
-                className="w-full px-4 py-2 text-left text-sm hover:bg-blue-50 flex items-center gap-3 text-slate-700 transition-colors"
+                className="w-full px-4 py-2 text-left text-sm hover:bg-blue-50 flex items-center gap-3 transition-colors"
               >
-                <ImageIcon size={16} className="text-slate-400" />
-                <span className="font-medium">保存到相册</span>
+                {isFileSaved ? (
+                  <Check size={16} className="text-green-500 shrink-0" />
+                ) : (
+                  <ImageIcon size={16} className="text-slate-400 shrink-0" />
+                )}
+                <span className={`font-medium ${isFileSaved ? 'text-green-600' : 'text-slate-700'}`}>
+                  {isFileSaved ? '重新保存' : '保存到相册'}
+                </span>
               </button>
             )}
 
@@ -329,10 +340,16 @@ export const MessageItem: React.FC<Props> = React.memo(
                   onSaveFileToLocal?.(downloadUrl, item.originalName || 'file');
                   onToggleMenu(null);
                 }}
-                className="w-full px-4 py-2 text-left text-sm hover:bg-blue-50 flex items-center gap-3 text-slate-700 transition-colors"
+                className="w-full px-4 py-2 text-left text-sm hover:bg-blue-50 flex items-center gap-3 transition-colors"
               >
-                <FolderDown size={16} className="text-slate-400" />
-                <span className="font-medium">保存到本地</span>
+                {isFileSaved ? (
+                  <Check size={16} className="text-green-500 shrink-0" />
+                ) : (
+                  <FolderDown size={16} className="text-slate-400 shrink-0" />
+                )}
+                <span className={`font-medium ${isFileSaved ? 'text-green-600' : 'text-slate-700'}`}>
+                  {isFileSaved ? '重新保存' : '保存到本地'}
+                </span>
               </button>
             )}
 
@@ -342,10 +359,16 @@ export const MessageItem: React.FC<Props> = React.memo(
                   onSaveAllMedia?.(item.files!, baseUrl);
                   onToggleMenu(null);
                 }}
-                className="w-full px-4 py-2 text-left text-sm hover:bg-blue-50 flex items-center gap-3 text-slate-700 transition-colors"
+                className="w-full px-4 py-2 text-left text-sm hover:bg-blue-50 flex items-center gap-3 transition-colors"
               >
-                <FolderDown size={16} className="text-slate-400" />
-                <span className="font-medium">保存到相册</span>
+                {isGallerySaved ? (
+                  <Check size={16} className="text-green-500 shrink-0" />
+                ) : (
+                  <FolderDown size={16} className="text-slate-400 shrink-0" />
+                )}
+                <span className={`font-medium ${isGallerySaved ? 'text-green-600' : 'text-slate-700'}`}>
+                  {isGallerySaved ? '重新保存' : '保存到相册'}
+                </span>
               </button>
             )}
 

@@ -3,8 +3,8 @@ import { Filesystem, Directory } from '@capacitor/filesystem';
 import { Media } from '@capacitor-community/media';
 import { FileInfo } from '../types';
 
-export async function saveToAlbum(url: string, fileName: string, showToast: (m: string, t?: any) => void) {
-  if (!Capacitor.isNativePlatform()) return;
+export async function saveToAlbum(url: string, fileName: string, showToast: (m: string, t?: any) => void): Promise<boolean> {
+  if (!Capacitor.isNativePlatform()) return false;
 
   try {
     showToast('正在保存到相册...', 'info');
@@ -75,17 +75,19 @@ export async function saveToAlbum(url: string, fileName: string, showToast: (m: 
     }).catch(err => console.warn('Cleanup temp file failed:', err));
 
     showToast('已成功保存到相册');
+    return true;
   } catch (e: any) {
     console.error('[Media] Save to album failed:', e);
     showToast(`保存失败: ${e.message}`, 'error');
+    return false;
   }
 }
 
 /**
  * 将任意文件保存到本地文件目录（Documents/FastSend）
  */
-export async function saveFileToLocal(url: string, fileName: string, showToast: (m: string, t?: any) => void) {
-  if (!Capacitor.isNativePlatform()) return;
+export async function saveFileToLocal(url: string, fileName: string, showToast: (m: string, t?: any) => void): Promise<boolean> {
+  if (!Capacitor.isNativePlatform()) return false;
 
   try {
     showToast('正在保存文件...', 'info');
@@ -112,9 +114,11 @@ export async function saveFileToLocal(url: string, fileName: string, showToast: 
     });
 
     showToast(`已保存到 Documents/FastSend/${fileName}`);
+    return true;
   } catch (e: any) {
     console.error('[Media] Save file to local failed:', e);
     showToast(`保存失败: ${e.message}`, 'error');
+    return false;
   }
 }
 
@@ -127,8 +131,8 @@ export async function saveAllMediaFromGallery(
   files: FileInfo[],
   baseUrl: string,
   showToast: (m: string, t?: any) => void,
-) {
-  if (!Capacitor.isNativePlatform()) return;
+): Promise<boolean> {
+  if (!Capacitor.isNativePlatform()) return false;
 
   const mediaFiles = files.filter((f) => f.type === 'image' || f.type === 'video');
   const otherFiles = files.filter((f) => f.type === 'file');
@@ -215,7 +219,9 @@ export async function saveAllMediaFromGallery(
 
   if (saved === total) {
     showToast(`已保存全部 ${total} 个文件`);
+    return true;
   } else {
     showToast(`已保存 ${saved}/${total} 个文件`, saved > 0 ? 'info' : 'error');
+    return saved > 0;
   }
 }
