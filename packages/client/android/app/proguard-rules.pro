@@ -1,21 +1,22 @@
-# Add project specific ProGuard rules here.
-# You can control the set of applied configuration files using the
-# proguardFiles setting in build.gradle.
-#
-# For more details, see
-#   http://developer.android.com/guide/developing/tools/proguard.html
+# Capacitor 基础规则
+-keep class com.getcapacitor.** { *; }
+-keep interface com.getcapacitor.** { *; }
 
-# If your project uses WebView with JS, uncomment the following
-# and specify the fully qualified class name to the JavaScript interface
-# class:
-#-keepclassmembers class fqcn.of.javascript.interface.for.webview {
-#   public *;
-#}
+# 忽略 slf4j 相关的警告
+-dontwarn org.slf4j.**
+-keep class org.slf4j.** { *; }
 
-# Uncomment this to preserve the line number information for
-# debugging stack traces.
-#-keepattributes SourceFile,LineNumberTable
+# 忽略常见的三方库警告
+-dontwarn javax.annotation.**
+-dontwarn org.checkerframework.**
+-dontwarn com.google.errorprone.annotations.**
 
-# If you keep the line number information, uncomment this to
-# hide the original source file name.
-#-renamesourcefileattribute SourceFile
+# 保持所有 Capacitor 插件
+-keep class * extends com.getcapacitor.Plugin { *; }
+-keep class com.fastsend.app.** { *; }
+
+# Lucide Icons / React 相关可能需要的压缩规则
+-keepattributes *Annotation*
+-keepattributes Signature
+-keepattributes EnclosingMethod
+-dontwarn com.google.android.gms.**
