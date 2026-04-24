@@ -71,6 +71,9 @@ jobs:
       - name: Install dependencies
         run: npm install
 
+      - name: Sync Version
+        run: node scripts/sync-version.js
+
       - name: Build Frontend
         run: npm run build --workspace=@fast-send/client
 
@@ -79,13 +82,14 @@ jobs:
         run: npx cap sync android
 
       - name: Decode Keystore
-        run: echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 -d > packages/client/android/app/fastsend-release.jks
+        run: |
+          echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 -d > packages/client/android/app/fastsend-release.jks
 
       - name: Build Android APK
         working-directory: packages/client/android
         run: |
           chmod +x gradlew
-          ./gradlew assembleRelease
+          ./gradlew assembleRelease --no-daemon
         env:
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
@@ -104,13 +108,6 @@ jobs:
     needs: [build-windows, build-android]
     runs-on: ubuntu-latest
     steps:
-      - name: Download Windows Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: unused-trigger
-          path: .
-        # 这里的下载逻辑在 actions/upload-artifact@v4 中不需要指定 path
-
       - uses: actions/download-artifact@v4
         with:
           name: FastSend-Windows
