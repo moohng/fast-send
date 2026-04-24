@@ -45,17 +45,9 @@ jobs:
         working-directory: packages/server-go
         run: |
           go install github.com/tc-hib/go-winres@latest
-          # 显式生成 syso 文件，确保图标被包含
           go-winres make
-          # 验证 syso 是否生成
           ls *.syso
           go build -ldflags="-s -w -H windowsgui" -o ../../out/FastSend_${{ github.ref_name }}.exe main.go
-
-      - name: Compress with UPX
-        uses: svenstaro/upx-action@v2
-        with:
-          files: out/FastSend_${{ github.ref_name }}.exe
-          args: --best
 
       - name: Upload Windows Artifact
         uses: actions/upload-artifact@v4
