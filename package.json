@@ -19,9 +19,12 @@
     "format": "prettier --write ."
   },
   "devDependencies": {
+    "@capacitor/assets": "3.0.5",
     "concurrently": "^9.1.0",
     "cross-env": "10.1.0",
+    "png-to-ico": "3.0.1",
     "prettier": "3.8.3",
+    "sharp": "0.34.5",
     "ts-node": "^10.9.2",
     "tsconfig-paths": "4.2.0",
     "typescript": "^5.7.2"

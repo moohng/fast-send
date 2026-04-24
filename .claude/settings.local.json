@@ -8,7 +8,12 @@
       "Bash(go get *)",
       "Bash(go build *)",
       "Bash(npm install *)",
-      "Bash(npx cap *)"
+      "Bash(npx cap *)",
+      "Bash(python *)",
+      "Bash(npm list *)",
+      "Bash(pip install *)",
+      "Bash(mv \"D:/workspaces/fast-send/.claude/skills/logo-designer/scripts/svg_to_png_resvg_v2.py\" \"D:/workspaces/fast-send/.claude/skills/logo-designer/scripts/svg_to_png.py\")",
+      "Bash(rm \"D:/workspaces/fast-send/.claude/skills/logo-designer/scripts/svg_to_png_svglib.py\" \"D:/workspaces/fast-send/.claude/skills/logo-designer/scripts/svg_to_png_render.py\" \"D:/workspaces/fast-send/.claude/skills/logo-designer/scripts/svg_to_png_resvg.py\" \"D:/workspaces/fast-send/.claude/skills/logo-designer/scripts/svg_to_png_pillow.py\")"
     ]
   }
 }

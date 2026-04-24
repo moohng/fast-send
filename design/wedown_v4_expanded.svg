@@ -1,0 +1,18 @@
+<svg viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
+  <!-- 移除背景 rect -->
+  
+  <!-- 重叠的页面/块：整体放大并向中心靠拢 -->
+  <!-- 后层页面：占据更大比例，通过透明度创造深度 -->
+  <rect x="50" y="50" width="700" height="700" rx="80" fill="#07C160" opacity="0.3"/>
+  
+  <!-- 前层页面：主视觉中心 -->
+  <rect x="274" y="274" width="700" height="700" rx="80" fill="#07C160"/>
+  
+  <!-- 内部核心元素：同步放大 -->
+  <!-- 模拟光标 -->
+  <rect x="420" y="450" width="100" height="360" rx="50" fill="white"/>
+  
+  <!-- 模拟排版行 -->
+  <rect x="580" y="450" width="300" height="60" rx="30" fill="white" opacity="0.6"/>
+  <rect x="580" y="560" width="220" height="60" rx="30" fill="white" opacity="0.4"/>
+</svg>

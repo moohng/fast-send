@@ -353,9 +353,7 @@ export default function App() {
       )}
       <div className="bg-white/80 backdrop-blur-md border-b shrink-0 z-50 px-4 py-3 flex items-center justify-between shadow-sm">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 bg-blue-600 rounded-2xl flex items-center justify-center shadow-lg rotate-3">
-            <UploadCloud className="text-white" size={24} strokeWidth={2.5} />
-          </div>
+          <img src="/logo.svg" className="w-10 h-10 rounded-xl shadow-lg shrink-0" alt="FastSend Logo" />
           <div>
             <h1 className="text-lg font-black tracking-tight text-slate-800">FastSend</h1>
             <div className="flex items-center gap-1.5">
