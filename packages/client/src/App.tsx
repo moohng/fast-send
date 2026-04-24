@@ -18,6 +18,7 @@ import { requestNotificationPermission } from './utils/notifications'
 import { saveToAlbum } from './utils/media'
 import { App as CapApp } from '@capacitor/app'
 import { Capacitor } from '@capacitor/core'
+import { StatusBar, Style } from '@capacitor/status-bar'
 import { Virtuoso, VirtuosoHandle } from 'react-virtuoso'
 
 const CLIENT_ID = (() => {
@@ -87,6 +88,29 @@ export default function App() {
   }, [])
 
   useEffect(() => {
+    if (!Capacitor.isNativePlatform()) return;
+
+    const updateStatusBar = async () => {
+      try {
+        if (previewMedia) {
+          await StatusBar.setStyle({ style: Style.Dark });
+          await StatusBar.setBackgroundColor({ color: '#000000' });
+        } else if (showQR || showSettings) {
+          await StatusBar.setStyle({ style: Style.Dark });
+          await StatusBar.setBackgroundColor({ color: '#666666' });
+        } else {
+          await StatusBar.setStyle({ style: Style.Light });
+          await StatusBar.setBackgroundColor({ color: '#ffffff' });
+        }
+      } catch (e) {
+        console.error('Failed to update status bar:', e);
+      }
+    };
+    
+    updateStatusBar();
+  }, [previewMedia, showQR, showSettings]);
+
+  useEffect(() => {
     if (!baseUrl) return
     const fetchConfig = async () => {
       try {
@@ -152,12 +176,12 @@ export default function App() {
   }
 
   const handleActionClick = (type: string) => {
-    setIsMenuOpen(false)
+    // setIsMenuOpen(false)
     if (type === 'file') fileInputRef.current?.click()
-    if (type === 'album') albumInputRef.current?.click()
+    // if (type === 'album') albumInputRef.current?.click()
     if (type === 'camera') cameraInputRef.current?.click()
     if (type === 'video') videoInputRef.current?.click()
-    if (type === 'backup') handleBackup()
+    if (type === 'album') handleBackup()
   }
 
   const handleBackup = async () => {
@@ -170,7 +194,7 @@ export default function App() {
       })
 
       if (!result.photos || result.photos.length === 0) return
-      showToast(`正在备份 ${result.photos.length} 项...`, "info")
+      showToast(`正在上传 ${result.photos.length} 项...`, "info")
 
       const files: File[] = []
       for (const photo of result.photos) {
@@ -184,12 +208,12 @@ export default function App() {
 
       if (files.length > 0) {
         await uploadBatch(files)
-        showToast(`成功备份 ${files.length} 张照片`)
+        showToast(`成功上传 ${files.length} 张照片`)
       }
     } catch (e: any) {
       console.error("[Backup] Picker error:", e)
       if (e.message !== "User cancelled photos app") {
-        showToast(`备份失败: ${e.message}`, "error")
+        showToast(`上传失败: ${e.message}`, "error")
       }
     }
   }
@@ -347,9 +371,11 @@ export default function App() {
           <p className="mt-4 text-blue-600 font-black text-xl">将文件/文件夹拖入此处</p>
         </div>
       )}
-      <div className="bg-white/80 backdrop-blur-md border-b shrink-0 z-50 px-4 py-3 flex items-center justify-between shadow-sm">
-        <div className="flex items-center gap-3">
-          <img src="/logo.svg" className="w-10 h-10 rounded-xl shadow-lg shrink-0" alt="FastSend Logo" />
+      <div className="bg-white/80 backdrop-blur-md border-b shrink-0 z-50 shadow-sm flex flex-col">
+        <div className="pt-safe" />
+        <div className="px-4 py-3 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <img src="/logo.svg" className="w-10 h-10 rounded-xl shadow-lg shrink-0" alt="FastSend Logo" />
           <div>
             <h1 className="text-lg font-black tracking-tight text-slate-800">FastSend</h1>
             <div className="flex items-center gap-1.5">
@@ -385,7 +411,7 @@ export default function App() {
               </button>
 
               {isMoreMenuOpen && (
-                <div className="absolute top-full right-0 mt-2 w-48 bg-white/90 backdrop-blur-xl border border-slate-200 shadow-2xl rounded-2xl py-2 z-[100] animate-in fade-in zoom-in-95 duration-100 more-menu-container">
+                <div className="absolute top-full right-0 mt-2 w-48 bg-white/90 backdrop-blur-xl border border-slate-200 shadow-2xl rounded-xl py-2 z-[100] animate-in fade-in zoom-in-95 duration-100 more-menu-container">
                   <button
                     onClick={() => { setIsMoreMenuOpen(false); scan(); }}
                     className="w-full px-4 py-2.5 text-left text-sm hover:bg-blue-50 flex items-center gap-3 text-slate-700 transition-colors"
@@ -412,6 +438,7 @@ export default function App() {
             </>
           )}
         </div>
+        </div>
       </div>
 
       <div className="flex-1 w-full relative">
@@ -424,7 +451,7 @@ export default function App() {
           initialTopMostItemIndex={items.length - 1}
           overscan={1000}
           itemContent={(index, item) => (
-            <div className="px-4 sm:px-6">
+            <div className={`px-4 sm:px-6 ${index === items.length - 1 ? 'pb-2' : ''} ${index === 0 ? 'pt-2' : ''}`}>
               <MessageItem
                 key={item.id}
                 item={item}
@@ -463,7 +490,7 @@ export default function App() {
         )}
       </div>
 
-      <div className="bg-white border-t shrink-0 z-50 pb-safe">
+      <div className="bg-white border-t shrink-0 z-50 flex flex-col">
         <BottomInput
           inputText={inputText}
           setInputText={setInputText}
@@ -477,10 +504,11 @@ export default function App() {
           isMobile={isMobile}
           onAction={handleActionClick}
         />
+        <div className="pb-safe" />
       </div>
 
       <input type="file" multiple ref={fileInputRef} onChange={(e) => e.target.files && uploadBatch(Array.from(e.target.files))} className="hidden" />
-      <input type="file" accept="image/*" ref={albumInputRef} onChange={(e) => e.target.files && uploadBatch(Array.from(e.target.files))} className="hidden" />
+      {/* <input type="file" accept="image/*" ref={albumInputRef} onChange={(e) => e.target.files && uploadBatch(Array.from(e.target.files))} className="hidden" /> */}
       <input type="file" accept="image/*" capture="environment" ref={cameraInputRef} onChange={(e) => e.target.files && uploadBatch(Array.from(e.target.files))} className="hidden" />
       <input type="file" accept="video/*" capture="environment" ref={videoInputRef} onChange={(e) => e.target.files && uploadBatch(Array.from(e.target.files))} className="hidden" />
 

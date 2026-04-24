@@ -32,40 +32,43 @@ export const GalleryPreview: React.FC<Props> = ({ items, initialIndex, baseUrl, 
 
   return (
     <div className="fixed inset-0 z-[200] bg-black/95 backdrop-blur-xl flex flex-col animate-in fade-in duration-200">
-      <div className="absolute top-0 inset-x-0 h-16 flex items-center justify-between px-6 z-[210] bg-gradient-to-b from-black/50 to-transparent pointer-events-none">
-        <div className="text-white/80 text-sm font-medium pointer-events-auto">
-          {items.length} 张内容
-        </div>
-        <div className="flex gap-4 pointer-events-auto">
-          {Capacitor.isNativePlatform() && (
-            <button
-              onClick={() => {
-                const index = Math.round(scrollRef.current!.scrollLeft / scrollRef.current!.clientWidth)
-                const file = items[index]
-                if (file.type === 'image' || file.type === 'video') {
-                  const url = `${baseUrl}/download/${file.filename}`
-                  onSaveToAlbum?.(url, file.originalName)
-                }
-              }}
-              className="text-white/70 hover:text-white p-2"
-            >
-              <ImageIcon size={24} />
+      <div className="absolute top-0 inset-x-0 z-[210] bg-gradient-to-b from-black/50 to-transparent pointer-events-none flex flex-col">
+        <div className="pt-safe" />
+        <div className="h-16 flex items-center justify-between px-6">
+          <div className="text-white/80 text-sm font-medium pointer-events-auto">
+            {items.length} 张内容
+          </div>
+          <div className="flex gap-4 pointer-events-auto">
+            {Capacitor.isNativePlatform() && (
+              <button
+                onClick={() => {
+                  const index = Math.round(scrollRef.current!.scrollLeft / scrollRef.current!.clientWidth)
+                  const file = items[index]
+                  if (file.type === 'image' || file.type === 'video') {
+                    const url = `${baseUrl}/download/${file.filename}`
+                    onSaveToAlbum?.(url, file.originalName)
+                  }
+                }}
+                className="text-white/70 hover:text-white p-2"
+              >
+                <ImageIcon size={24} />
+              </button>
+            )}
+            {!Capacitor.isNativePlatform() && (
+              <button
+                onClick={() => {
+                  const index = Math.round(scrollRef.current!.scrollLeft / scrollRef.current!.clientWidth)
+                  handleDownload(items[index])
+                }}
+                className="text-white/70 hover:text-white p-2"
+              >
+                <Download size={24} />
+              </button>
+            )}
+            <button onClick={onClose} className="text-white/70 hover:text-white p-2">
+              <X size={28} />
             </button>
-          )}
-          {!Capacitor.isNativePlatform() && (
-            <button
-              onClick={() => {
-                const index = Math.round(scrollRef.current!.scrollLeft / scrollRef.current!.clientWidth)
-                handleDownload(items[index])
-              }}
-              className="text-white/70 hover:text-white p-2"
-            >
-              <Download size={24} />
-            </button>
-          )}
-          <button onClick={onClose} className="text-white/70 hover:text-white p-2">
-            <X size={28} />
-          </button>
+          </div>
         </div>
       </div>
 
@@ -83,7 +86,7 @@ export const GalleryPreview: React.FC<Props> = ({ items, initialIndex, baseUrl, 
               className="w-full h-full shrink-0 snap-center flex items-center justify-center relative overflow-hidden"
             >
               {file.type === 'image' ? (
-                <div className="w-full h-full flex items-center justify-center p-2">
+                <div className="w-full h-full flex items-center justify-center">
                   <img
                     src={url}
                     className="max-w-full max-h-full object-contain shadow-2xl select-none animate-in zoom-in-95 duration-300"
@@ -92,9 +95,9 @@ export const GalleryPreview: React.FC<Props> = ({ items, initialIndex, baseUrl, 
                   />
                 </div>
               ) : file.type === 'video' ? (
-                <div className="w-full h-full flex items-center justify-center p-4">
+                <div className="w-full h-full flex items-center justify-center">
                   <div 
-                    className="w-full max-w-5xl aspect-video bg-black rounded-2xl overflow-hidden shadow-2xl border border-white/10"
+                    className="w-full max-w-5xl max-h-full bg-black overflow-hidden"
                     onClick={(e) => e.stopPropagation()}
                   >
                     <video src={url} controls className="w-full h-full" autoPlay />
@@ -102,7 +105,7 @@ export const GalleryPreview: React.FC<Props> = ({ items, initialIndex, baseUrl, 
                 </div>
               ) : (
                 <div 
-                  className="text-white flex flex-col items-center gap-6 p-8 bg-white/5 backdrop-blur-md rounded-3xl border border-white/10"
+                  className="text-white flex flex-col items-center gap-6 p-8"
                   onClick={(e) => e.stopPropagation()}
                 >
                   <div className="w-24 h-24 bg-white/10 rounded-3xl flex items-center justify-center text-white/50">
@@ -112,13 +115,6 @@ export const GalleryPreview: React.FC<Props> = ({ items, initialIndex, baseUrl, 
                     <p className="font-bold text-xl">{file.originalName}</p>
                     <p className="text-white/40 text-sm font-medium uppercase">{file.size}</p>
                   </div>
-                  <button
-                    onClick={() => handleDownload(file)}
-                    className="bg-white text-black px-10 py-4 rounded-2xl font-bold hover:scale-105 active:scale-95 transition-transform flex items-center gap-2"
-                  >
-                    <Download size={20} />
-                    下载文件
-                  </button>
                 </div>
               )}
             </div>

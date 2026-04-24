@@ -40,8 +40,8 @@ export const ActionPanel: React.FC<ActionPanelProps> = ({
 }) => {
   return (
     <div
-      className={`bg-white border-t border-slate-100 transition-all duration-300 ease-in-out overflow-hidden action-panel-container ${
-        isOpen ? 'max-h-[280px] opacity-100' : 'max-h-0 opacity-0 pointer-events-none'
+      className={`bg-white border-t border-slate-100 transition-all duration-300 linear overflow-hidden action-panel-container ${
+        isOpen ? 'max-h-[150px] opacity-100' : 'max-h-0 opacity-0 pointer-events-none'
       }`}
     >
       <div className="p-8 mx-auto">
@@ -54,12 +54,6 @@ export const ActionPanel: React.FC<ActionPanelProps> = ({
                 label="相册"
                 color="emerald"
                 onClick={() => onAction('album')}
-              />
-              <ActionButton
-                icon={CloudUpload}
-                label="备份"
-                color="indigo"
-                onClick={() => onAction('backup')}
               />
               <ActionButton
                 icon={Camera}

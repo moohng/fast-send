@@ -28,7 +28,7 @@ export const QRModal: React.FC<QRModalProps> = ({
         {config ? (
           <>
             <div className="bg-slate-50 p-6 rounded-[2rem] mb-4 border border-slate-100 shadow-inner">
-              {qrUrl && <QRCodeSVG value={qrUrl} size={224} className="mx-auto" />}
+              {qrUrl && <QRCodeSVG value={qrUrl} style={{ width: '100%', height: 'auto', maxWidth: '224px' }} className="mx-auto" />}
             </div>
             <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
               {config.allIps?.map((ip: string) => (

@@ -63,7 +63,7 @@ const MediaGrid: React.FC<{
     return (
       <div
         key={index}
-        className={`relative aspect-square cursor-pointer overflow-hidden group/item ${count === 1 ? 'max-h-[400px] aspect-auto rounded-2xl' : 'rounded-lg'}`}
+        className={`relative aspect-square cursor-pointer overflow-hidden group/item ${count === 1 ? 'max-h-[400px] aspect-auto rounded-xl' : 'rounded'}`}
         onClick={() => onPreview(url, isVid ? 'video' : 'image', index, files)}
       >
         {file.type === 'image' || file.type === 'video' ? (
@@ -98,7 +98,7 @@ const MediaGrid: React.FC<{
   }
 
   return (
-    <div className={`grid gap-1.5 ${gridClass}`}>
+    <div className={`grid gap-1 ${gridClass}`}>
       {files.map((f, i) => renderItem(f, i))}
     </div>
   )
@@ -151,7 +151,7 @@ export const MessageItem: React.FC<Props> = React.memo(
     }
 
     return (
-      <div style={style} className={`flex flex-col w-full py-1 ${isMe ? 'items-end' : 'items-start'}`}>
+      <div style={style} className={`flex flex-col w-full py-1.5 ${isMe ? 'items-end' : 'items-start'}`}>
         <div
           className={`flex max-w-[95%] sm:max-w-[480px] group gap-2 ${isMe ? 'flex-row-reverse' : 'flex-row'}`}
         >
@@ -167,7 +167,7 @@ export const MessageItem: React.FC<Props> = React.memo(
           <div className={`flex items-start gap-1 min-w-0 ${isMe ? 'flex-row-reverse' : 'flex-row'}`}>
             <div className="space-y-1 min-w-0 flex-1">
               <div
-                className={`rounded-[1.4rem] shadow-sm text-sm relative transition-all overflow-hidden ${isMe ? 'bg-blue-600 text-white rounded-tr-none' : 'bg-white text-slate-700 border border-slate-200 rounded-tl-none'} ${item.type !== 'text' && !item.progress ? 'p-1.5' : 'p-4'}`}
+                className={`rounded-2xl shadow-sm text-sm relative transition-all overflow-hidden ${isMe ? 'bg-blue-600 text-white rounded-tr-none' : 'bg-white text-slate-700 border border-slate-200 rounded-tl-none'} ${item.type !== 'text' && !item.progress ? 'p-2' : 'p-4'}`}
               >
                 {item.type === 'text' ? (
                   <div className="leading-relaxed break-all whitespace-pre-wrap font-medium select-text">
@@ -192,18 +192,18 @@ export const MessageItem: React.FC<Props> = React.memo(
                 ) : (
                   <div className="space-y-2">
                     {isImg && !item.progress ? (
-                      <div className="relative min-h-[100px] bg-slate-100 rounded-xl overflow-hidden">
+                      <div className="relative min-h-[100px] bg-slate-100 rounded-lg overflow-hidden">
                         <img
                           src={downloadUrl}
                           loading="eager"
                           onClick={() => onPreview(downloadUrl, 'image', 0, [{ filename: item.filename || '', originalName: item.originalName || '', size: item.size || '', type: 'image' }])}
-                          className="max-w-full rounded-xl cursor-zoom-in hover:brightness-95 shadow-sm mx-auto block"
+                          className="max-w-full rounded-lg cursor-zoom-in hover:brightness-95 shadow-sm mx-auto block"
                           style={{ minHeight: '100px' }}
                         />
                       </div>
                     ) : isVid && !item.progress ? (
                       <div
-                        className="relative cursor-pointer overflow-hidden rounded-xl group/vid bg-slate-100 min-h-[150px]"
+                        className="relative cursor-pointer overflow-hidden rounded-lg group/vid bg-slate-100 min-h-[150px]"
                         onClick={() => onPreview(downloadUrl, 'video', 0, [{ filename: item.filename || '', originalName: item.originalName || '', size: item.size || '', type: 'video' }])}
                       >
                         <video src={downloadUrl} className="max-w-full block" />
@@ -218,10 +218,10 @@ export const MessageItem: React.FC<Props> = React.memo(
                         <a 
                           href={`${downloadUrl}?download=1`}
                           download={item.originalName}
-                          className="flex items-center gap-3 py-1 pr-1 min-w-0 cursor-pointer hover:bg-black/5 rounded-xl transition-colors no-underline text-inherit block w-full"
+                          className="flex items-center gap-3 py-1 pr-1 min-w-0 cursor-pointer hover:bg-black/5 rounded-lg transition-colors no-underline text-inherit block w-full"
                         >
                           <div
-                            className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 shadow-inner ${isMe ? 'bg-blue-500 text-white' : 'bg-slate-100 text-slate-500'}`}
+                            className={`w-10 h-10 rounded-lg flex items-center justify-center shrink-0 shadow-inner ${isMe ? 'bg-blue-500 text-white' : 'bg-slate-100 text-slate-500'}`}
                           >
                             {getFileIcon(item.originalName)}
                           </div>
@@ -239,7 +239,7 @@ export const MessageItem: React.FC<Props> = React.memo(
                       ) : (
                         <div className="flex items-center gap-3 py-1 pr-1 min-w-0">
                           <div
-                            className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 shadow-inner ${isMe ? 'bg-blue-500 text-white' : 'bg-slate-100 text-slate-500'}`}
+                            className={`w-10 h-10 rounded-lg flex items-center justify-center shrink-0 shadow-inner ${isMe ? 'bg-blue-500 text-white' : 'bg-slate-100 text-slate-500'}`}
                           >
                             <Loader2 size={20} className="animate-spin" />
                           </div>
@@ -280,7 +280,7 @@ export const MessageItem: React.FC<Props> = React.memo(
 
         {isMenuOpen && menuPos && (
           <div
-            className="fixed z-[1000] bg-white/90 backdrop-blur-xl border border-slate-200 shadow-2xl rounded-2xl py-1.5 min-w-[160px] animate-in fade-in zoom-in-95 duration-100 more-menu-container"
+            className="fixed z-[1000] bg-white/90 backdrop-blur-xl border border-slate-200 shadow-2xl rounded-xl py-1.5 min-w-[160px] animate-in fade-in zoom-in-95 duration-100 more-menu-container"
             style={{ top: menuPos.y, left: menuPos.x }}
             onClick={(e) => e.stopPropagation()}
           >
