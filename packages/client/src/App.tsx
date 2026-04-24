@@ -57,11 +57,6 @@ export default function App() {
   const [dataDir, setDataDir] = useState('')
   const [clipboardSync, setClipboardSync] = useState(false)
 
-  const fileInputRef = useRef<HTMLInputElement>(null)
-  const albumInputRef = useRef<HTMLInputElement>(null)
-  const cameraInputRef = useRef<HTMLInputElement>(null)
-  const videoInputRef = useRef<HTMLInputElement>(null)
-
   const [selectedQRip, setSelectedQRip] = useState<string>('')
 
   useEffect(() => {
@@ -172,49 +167,6 @@ export default function App() {
       showToast('存储目录已更新', 'success')
     } catch (e) {
       showToast('更新失败', 'error')
-    }
-  }
-
-  const handleActionClick = (type: string) => {
-    // setIsMenuOpen(false)
-    if (type === 'file') fileInputRef.current?.click()
-    // if (type === 'album') albumInputRef.current?.click()
-    if (type === 'camera') cameraInputRef.current?.click()
-    if (type === 'video') videoInputRef.current?.click()
-    if (type === 'album') handleBackup()
-  }
-
-  const handleBackup = async () => {
-    if (!isMobile || !baseUrl) return
-    try {
-      const { Camera } = await import("@capacitor/camera")
-      const result = await Camera.pickImages({
-        quality: 100,
-        limit: 0,
-      })
-
-      if (!result.photos || result.photos.length === 0) return
-      showToast(`正在上传 ${result.photos.length} 项...`, "info")
-
-      const files: File[] = []
-      for (const photo of result.photos) {
-        try {
-          const response = await fetch(photo.webPath)
-          const blob = await response.blob()
-          const fileName = photo.path?.split("/").pop() || `backup_${Date.now()}.${photo.format}`
-          files.push(new File([blob], fileName, { type: blob.type }))
-        } catch (e) { }
-      }
-
-      if (files.length > 0) {
-        await uploadBatch(files)
-        showToast(`成功上传 ${files.length} 张照片`)
-      }
-    } catch (e: any) {
-      console.error("[Backup] Picker error:", e)
-      if (e.message !== "User cancelled photos app") {
-        showToast(`上传失败: ${e.message}`, "error")
-      }
     }
   }
 
@@ -502,15 +454,10 @@ export default function App() {
         <ActionPanel
           isOpen={isMenuOpen}
           isMobile={isMobile}
-          onAction={handleActionClick}
+          onChangeAction={uploadBatch}
         />
         <div className="pb-safe" />
       </div>
-
-      <input type="file" multiple ref={fileInputRef} onChange={(e) => e.target.files && uploadBatch(Array.from(e.target.files))} className="hidden" />
-      {/* <input type="file" accept="image/*" ref={albumInputRef} onChange={(e) => e.target.files && uploadBatch(Array.from(e.target.files))} className="hidden" /> */}
-      <input type="file" accept="image/*" capture="environment" ref={cameraInputRef} onChange={(e) => e.target.files && uploadBatch(Array.from(e.target.files))} className="hidden" />
-      <input type="file" accept="video/*" capture="environment" ref={videoInputRef} onChange={(e) => e.target.files && uploadBatch(Array.from(e.target.files))} className="hidden" />
 
       <QRModal
         isOpen={showQR}

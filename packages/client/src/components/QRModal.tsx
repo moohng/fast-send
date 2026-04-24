@@ -11,6 +11,8 @@ interface QRModalProps {
   onSelectIP: (ip: string) => void
 }
 
+const isDev = import.meta.env.DEV;
+
 export const QRModal: React.FC<QRModalProps> = ({
   isOpen,
   onClose,
@@ -20,7 +22,7 @@ export const QRModal: React.FC<QRModalProps> = ({
 }) => {
   if (!isOpen) return null
 
-  const qrUrl = selectedQRip ? `http://${selectedQRip}:5678` : ''
+  const qrUrl = selectedQRip ? `http://${selectedQRip}:${isDev ? '5173' : '5678'}` : ''
 
   return (
     <div className="fixed inset-0 z-[60] bg-black/60 backdrop-blur-sm flex items-center justify-center p-6" onClick={onClose}>
@@ -37,7 +39,7 @@ export const QRModal: React.FC<QRModalProps> = ({
                   onClick={() => onSelectIP(ip)}
                   className={`block w-full px-4 py-2 rounded-xl text-[10px] font-mono border transition-all ${selectedQRip === ip ? 'bg-blue-600 text-white border-blue-600' : 'bg-blue-50 text-blue-600 border-blue-100 hover:bg-blue-100'}`}
                 >
-                  http://{ip}:5678
+                  http://{ip}:{isDev ? '5173' : '5678'}
                 </button>
               ))}
             </div>
