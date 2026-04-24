@@ -23,7 +23,7 @@ export const GalleryPreview: React.FC<Props> = ({ items, initialIndex, baseUrl, 
   }, [initialIndex])
 
   const handleDownload = (file: FileInfo) => {
-    const url = `${baseUrl}/download/${file.filename}`
+    const url = `${baseUrl}/download/${file.filename}?download=1`
     const a = document.createElement('a')
     a.href = url
     a.download = file.originalName
@@ -73,6 +73,7 @@ export const GalleryPreview: React.FC<Props> = ({ items, initialIndex, baseUrl, 
         ref={scrollRef}
         className="flex-1 flex overflow-x-auto snap-x snap-mandatory no-scrollbar touch-pan-x"
         style={{ scrollBehavior: 'auto' }}
+        onClick={onClose}
       >
         {items.map((file, i) => {
           const url = `${baseUrl}/download/${file.filename}`
@@ -91,16 +92,19 @@ export const GalleryPreview: React.FC<Props> = ({ items, initialIndex, baseUrl, 
                   />
                 </div>
               ) : file.type === 'video' ? (
-                <div
-                  className="w-full h-full flex items-center justify-center p-4"
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  <div className="w-full max-w-5xl aspect-video bg-black rounded-2xl overflow-hidden shadow-2xl border border-white/10">
+                <div className="w-full h-full flex items-center justify-center p-4">
+                  <div 
+                    className="w-full max-w-5xl aspect-video bg-black rounded-2xl overflow-hidden shadow-2xl border border-white/10"
+                    onClick={(e) => e.stopPropagation()}
+                  >
                     <video src={url} controls className="w-full h-full" autoPlay />
                   </div>
                 </div>
               ) : (
-                <div className="text-white flex flex-col items-center gap-6 p-8 bg-white/5 backdrop-blur-md rounded-3xl border border-white/10">
+                <div 
+                  className="text-white flex flex-col items-center gap-6 p-8 bg-white/5 backdrop-blur-md rounded-3xl border border-white/10"
+                  onClick={(e) => e.stopPropagation()}
+                >
                   <div className="w-24 h-24 bg-white/10 rounded-3xl flex items-center justify-center text-white/50">
                     {file.originalName.match(/\.(zip|rar|7z|tar)$/i) ? <FileArchive size={48} /> : <FileText size={48} />}
                   </div>
@@ -125,13 +129,13 @@ export const GalleryPreview: React.FC<Props> = ({ items, initialIndex, baseUrl, 
       {items.length > 1 && !Capacitor.isNativePlatform() && (
         <>
           <button
-            onClick={() => scrollRef.current?.scrollBy({ left: -scrollRef.current.clientWidth })}
+            onClick={(e) => { e.stopPropagation(); scrollRef.current?.scrollBy({ left: -scrollRef.current.clientWidth }) }}
             className="absolute left-4 top-1/2 -translate-y-1/2 p-4 bg-white/5 hover:bg-white/10 text-white rounded-full transition-colors z-[210]"
           >
             <ChevronLeft size={32} />
           </button>
           <button
-            onClick={() => scrollRef.current?.scrollBy({ left: scrollRef.current.clientWidth })}
+            onClick={(e) => { e.stopPropagation(); scrollRef.current?.scrollBy({ left: scrollRef.current.clientWidth }) }}
             className="absolute right-4 top-1/2 -translate-y-1/2 p-4 bg-white/5 hover:bg-white/10 text-white rounded-full transition-colors z-[210]"
           >
             <ChevronRight size={32} />

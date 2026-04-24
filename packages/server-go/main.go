@@ -48,7 +48,19 @@ func runHTTPServer(hub *ws.Hub, store *db.Store) {
 	r.Use(cors.Default())
 
 	// 静态资源
-	r.Static("/download", config.UploadDir)
+	r.GET("/download/*filepath", func(c *gin.Context) {
+		filePath := c.Param("filepath")
+		fullPath := config.UploadDir + filePath
+		
+		if c.Query("download") == "1" {
+			// Extract filename from path for the attachment header
+			parts := strings.Split(filePath, "/")
+			filename := parts[len(parts)-1]
+			c.FileAttachment(fullPath, filename)
+		} else {
+			c.File(fullPath)
+		}
+	})
 
 	// 使用 embed 托管前端构建产物
 	staticFiles, _ := fs.Sub(clientDist, "dist")

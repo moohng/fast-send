@@ -196,7 +196,7 @@ export const MessageItem: React.FC<Props> = React.memo(
                         <img
                           src={downloadUrl}
                           loading="eager"
-                          onClick={() => onPreview(downloadUrl, 'image')}
+                          onClick={() => onPreview(downloadUrl, 'image', 0, [{ filename: item.filename || '', originalName: item.originalName || '', size: item.size || '', type: 'image' }])}
                           className="max-w-full rounded-xl cursor-zoom-in hover:brightness-95 shadow-sm mx-auto block"
                           style={{ minHeight: '100px' }}
                         />
@@ -204,7 +204,7 @@ export const MessageItem: React.FC<Props> = React.memo(
                     ) : isVid && !item.progress ? (
                       <div
                         className="relative cursor-pointer overflow-hidden rounded-xl group/vid bg-slate-100 min-h-[150px]"
-                        onClick={() => onPreview(downloadUrl, 'video')}
+                        onClick={() => onPreview(downloadUrl, 'video', 0, [{ filename: item.filename || '', originalName: item.originalName || '', size: item.size || '', type: 'video' }])}
                       >
                         <video src={downloadUrl} className="max-w-full block" />
                         <div className="absolute inset-0 flex items-center justify-center bg-black/20 group-hover/vid:bg-black/40 transition-colors">
@@ -214,36 +214,48 @@ export const MessageItem: React.FC<Props> = React.memo(
                         </div>
                       </div>
                     ) : (
-                      <div className="flex items-center gap-3 py-1 pr-1 min-w-0">
-                        <div
-                          className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 shadow-inner ${isMe ? 'bg-blue-500 text-white' : 'bg-slate-100 text-slate-500'}`}
+                      item.progress === undefined ? (
+                        <a 
+                          href={`${downloadUrl}?download=1`}
+                          download={item.originalName}
+                          className="flex items-center gap-3 py-1 pr-1 min-w-0 cursor-pointer hover:bg-black/5 rounded-xl transition-colors no-underline text-inherit block w-full"
                         >
-                          {item.progress !== undefined ? (
+                          <div
+                            className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 shadow-inner ${isMe ? 'bg-blue-500 text-white' : 'bg-slate-100 text-slate-500'}`}
+                          >
+                            {getFileIcon(item.originalName)}
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <p className="font-bold text-xs break-all leading-tight mb-1">
+                              {item.originalName}
+                            </p>
+                            <p
+                              className={`text-[9px] uppercase font-bold ${isMe ? 'text-blue-100' : 'text-slate-400'}`}
+                            >
+                              {item.size}
+                            </p>
+                          </div>
+                        </a>
+                      ) : (
+                        <div className="flex items-center gap-3 py-1 pr-1 min-w-0">
+                          <div
+                            className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 shadow-inner ${isMe ? 'bg-blue-500 text-white' : 'bg-slate-100 text-slate-500'}`}
+                          >
                             <Loader2 size={20} className="animate-spin" />
-                          ) : (
-                            getFileIcon(item.originalName)
-                          )}
-                        </div>
-                        <div className="min-w-0 flex-1">
-                          <p className="font-bold text-xs break-all leading-tight mb-1">
-                            {item.originalName}
-                          </p>
-                          {item.progress !== undefined ? (
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <p className="font-bold text-xs break-all leading-tight mb-1">
+                              {item.originalName}
+                            </p>
                             <div className="w-full bg-blue-100/30 rounded-full h-1.5 overflow-hidden">
                               <div
                                 className="bg-white h-full transition-all"
                                 style={{ width: `${item.progress}%` }}
                               />
                             </div>
-                          ) : (
-                            <p
-                              className={`text-[9px] uppercase font-bold ${isMe ? 'text-blue-100' : 'text-slate-400'}`}
-                            >
-                              {item.size}
-                            </p>
-                          )}
+                          </div>
                         </div>
-                      </div>
+                      )
                     )}
                   </div>
                 )}
@@ -286,7 +298,7 @@ export const MessageItem: React.FC<Props> = React.memo(
 
             {item.type === 'file' && !Capacitor.isNativePlatform() && (
               <a
-                href={downloadUrl}
+                href={`${downloadUrl}?download=1`}
                 download={item.originalName}
                 className="w-full px-4 py-2 text-left text-sm hover:bg-blue-50 flex items-center gap-3 text-slate-700 transition-colors no-underline"
               >

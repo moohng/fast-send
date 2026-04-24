@@ -506,26 +506,13 @@ export default function App() {
         showToast={showToast}
       />
       {previewMedia && (
-        previewMedia.items ? (
-          <GalleryPreview
-            items={previewMedia.items}
-            initialIndex={previewMedia.index || 0}
-            baseUrl={baseUrl}
-            onClose={() => setPreviewMedia(null)}
-            onSaveToAlbum={(url, filename) => saveToAlbum(url, filename, showToast)}
-          />
-        ) : (
-          <div className="fixed inset-0 z-[200] bg-black/95 backdrop-blur-xl flex items-center justify-center p-4" onClick={() => setPreviewMedia(null)}>
-            <button className="absolute top-6 right-6 text-white/50 hover:text-white transition-colors"><X size={32} /></button>
-            {previewMedia.type === "image" ? (
-              <img src={previewMedia.url} className="max-w-full max-h-full object-contain shadow-2xl rounded-lg" alt="Preview" />
-            ) : (
-              <div className="w-full aspect-video bg-black rounded-2xl overflow-hidden shadow-2xl" onClick={(e) => e.stopPropagation()}>
-                <video src={previewMedia.url} controls autoPlay className="w-full h-full" />
-              </div>
-            )}
-          </div>
-        )
+        <GalleryPreview
+          items={previewMedia.items || [{ filename: previewMedia.url.split('/').pop() || '', originalName: 'Media', size: '', type: previewMedia.type === 'video' ? 'video' : 'image' }]}
+          initialIndex={previewMedia.index || 0}
+          baseUrl={baseUrl}
+          onClose={() => setPreviewMedia(null)}
+          onSaveToAlbum={(url, filename) => saveToAlbum(url, filename, showToast)}
+        />
       )}
     </div>
   )
