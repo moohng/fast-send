@@ -74,9 +74,9 @@ jobs:
       - name: Build Frontend
         run: npm run build --workspace=@fast-send/client
 
-      - name: Capacitor Update
+      - name: Capacitor Sync
         working-directory: packages/client
-        run: npx cap update android
+        run: npx cap sync android
 
       - name: Decode Keystore
         run: echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 -d > packages/client/android/app/fastsend-release.jks
