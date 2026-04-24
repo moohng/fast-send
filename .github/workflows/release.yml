@@ -29,6 +29,9 @@ jobs:
       - name: Install dependencies
         run: npm install
 
+      - name: Sync Version
+        run: node scripts/sync-version.js ${{ github.ref_name }}
+
       - name: Build Frontend
         run: npm run build --workspace=@fast-send/client
 
@@ -42,7 +45,10 @@ jobs:
         working-directory: packages/server-go
         run: |
           go install github.com/tc-hib/go-winres@latest
+          # 显式生成 syso 文件，确保图标被包含
           go-winres make
+          # 验证 syso 是否生成
+          ls *.syso
           go build -ldflags="-s -w -H windowsgui" -o ../../out/FastSend_${{ github.ref_name }}.exe main.go
 
       - name: Compress with UPX
@@ -79,7 +85,7 @@ jobs:
         run: npm install
 
       - name: Sync Version
-        run: node scripts/sync-version.js
+        run: node scripts/sync-version.js ${{ github.ref_name }}
 
       - name: Build Frontend
         run: npm run build --workspace=@fast-send/client
@@ -90,7 +96,8 @@ jobs:
 
       - name: Decode Keystore
         run: |
-          echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 -d > packages/client/android/app/fastsend-release.jks
+          printf "%s" "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 -d > packages/client/android/app/fastsend-release.jks
+          ls -l packages/client/android/app/fastsend-release.jks
 
       - name: Build Android APK
         working-directory: packages/client/android
