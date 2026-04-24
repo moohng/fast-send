@@ -1,13 +1,14 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
-import { QrCode, X, UploadCloud, Settings, Scan, RefreshCw, MoreHorizontal, ClipboardList, FolderTree } from 'lucide-react'
-import { QRCodeSVG } from 'qrcode.react'
-import { SharedItem, ServerConfig, FileInfo } from './types'
+import { QrCode, X, UploadCloud, Settings, Scan, RefreshCw, MoreHorizontal } from 'lucide-react'
+import { ServerConfig, FileInfo } from './types'
 import { MessageItem } from './components/MessageItem'
 import { ToastContainer, Toast } from './components/ToastContainer'
 import { GalleryPreview } from "./components/GalleryPreview"
 import { ActionPanel } from './components/ActionPanel'
 import { BottomInput } from './components/BottomInput'
 import { DebugConsole } from './components/DebugConsole'
+import { SettingsModal } from './components/SettingsModal'
+import { QRModal } from './components/QRModal'
 
 import { useSocket } from './hooks/useSocket'
 import { useItems } from './hooks/useItems'
@@ -61,11 +62,6 @@ export default function App() {
   const videoInputRef = useRef<HTMLInputElement>(null)
 
   const [selectedQRip, setSelectedQRip] = useState<string>('')
-
-  const qrUrl = useMemo(() => {
-    if (!selectedQRip) return ''
-    return `http://${selectedQRip}:5678`
-  }, [selectedQRip])
 
   useEffect(() => {
     if (config?.ip && !selectedQRip) {
@@ -488,129 +484,27 @@ export default function App() {
       <input type="file" accept="image/*" capture="environment" ref={cameraInputRef} onChange={(e) => e.target.files && uploadBatch(Array.from(e.target.files))} className="hidden" />
       <input type="file" accept="video/*" capture="environment" ref={videoInputRef} onChange={(e) => e.target.files && uploadBatch(Array.from(e.target.files))} className="hidden" />
 
-      {showQR && (
-        <div className="fixed inset-0 z-[60] bg-black/60 backdrop-blur-sm flex items-center justify-center p-6" onClick={() => setShowQR(false)}>
-          <div className="bg-white p-8 rounded-[3rem] shadow-2xl text-center w-full max-w-sm" onClick={(e) => e.stopPropagation()}>
-            {config ? (
-              <>
-                <div className="bg-slate-50 p-6 rounded-[2rem] mb-4 border border-slate-100 shadow-inner">
-                  {qrUrl && <QRCodeSVG value={qrUrl} size={224} className="mx-auto" />}
-                </div>
-                <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
-                  {config.allIps?.map((ip: string) => (
-                    <button
-                      key={ip}
-                      onClick={() => setSelectedQRip(ip)}
-                      className={`block w-full px-4 py-2 rounded-xl text-[10px] font-mono border transition-all ${selectedQRip === ip ? 'bg-blue-600 text-white border-blue-600' : 'bg-blue-50 text-blue-600 border-blue-100 hover:bg-blue-100'}`}
-                    >
-                      http://{ip}:5678
-                    </button>
-                  ))}
-                </div>
-              </>
-            ) : (
-              <div className="py-10 text-slate-400">
-                <QrCode size={48} className="mx-auto mb-4 opacity-20" />
-                <p className="text-sm font-medium mb-4">尚未连接到服务器</p>
-                <button onClick={() => { setShowQR(false); setShowSettings(true); }} className="bg-blue-600 text-white px-6 py-2 rounded-2xl text-sm font-bold shadow-lg shadow-blue-200">手动输入 IP 连接</button>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
-      {showSettings && (
-        <div className="fixed inset-0 z-[60] bg-black/60 backdrop-blur-sm flex items-center justify-center p-6" onClick={() => setShowSettings(false)}>
-          <div className="bg-white p-8 rounded-[2.5rem] shadow-2xl w-full max-w-md" onClick={(e) => e.stopPropagation()}>
-            <div className="flex justify-between items-center mb-6">
-              <h2 className="text-xl font-bold text-slate-800">设置</h2>
-              <button onClick={() => setShowSettings(false)} className="p-2 hover:bg-slate-100 rounded-full"><X size={20} /></button>
-            </div>
-            <div className="space-y-6">
-              {!isServerLocal && (
-                <div>
-                  <label className="block text-xs font-bold text-slate-400 uppercase mb-2">服务器地址 (电脑 IP)</label>
-                  <div className="flex gap-2">
-                    <input
-                      type="text"
-                      value={baseUrl}
-                      onChange={(e) => {
-                        const val = e.target.value
-                        setBaseUrl(val)
-                        localStorage.setItem('fast_send_last_url', val)
-                      }}
-                      placeholder="http://192.168.x.x:5678"
-                      className="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-xs text-slate-600 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    />
-                    <button onClick={() => { fetchData(); showToast('已尝试重新连接'); }} className="p-2.5 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-colors tracking-tighter text-[10px] font-bold">连接</button>
-                  </div>
-                </div>
-              )}
-
-              <div className="h-px bg-slate-100" />
-
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 bg-blue-50 text-blue-600 rounded-xl flex items-center justify-center">
-                    <ClipboardList size={20} />
-                  </div>
-                  <div>
-                    <p className="text-sm font-bold text-slate-800">剪贴板同步</p>
-                    <p className="text-[10px] text-slate-400 font-medium">在所有设备间自动同步剪贴板文本</p>
-                  </div>
-                </div>
-                <button
-                  onClick={toggleClipboardSync}
-                  className={`w-12 h-6 rounded-full transition-all relative ${clipboardSync ? 'bg-blue-600 shadow-lg shadow-blue-200' : 'bg-slate-200'}`}
-                >
-                  <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all shadow-sm ${clipboardSync ? 'left-7' : 'left-1'}`} />
-                </button>
-              </div>
-
-              <div className="h-px bg-slate-100" />
-
-              <div>
-                <div className="flex items-center gap-2 mb-2">
-                  <FolderTree size={16} className="text-blue-600" />
-                  <label className="block text-xs font-bold text-slate-400 uppercase">服务端存储目录</label>
-                </div>
-                <div className="flex gap-2">
-                  <input
-                    type="text"
-                    value={dataDir}
-                    readOnly
-                    placeholder="尚未设置存储目录"
-                    className="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-[10px] text-slate-400 cursor-not-allowed font-mono outline-none"
-                  />
-                  {isServerLocal && (
-                    <button
-                      onClick={async () => {
-                        try {
-                          const res = await fetch(`${baseUrl}/api/utils/select-folder`)
-                          const data = await res.json()
-                          if (data.path) {
-                            updateDataDir(data.path)
-                          }
-                        } catch (e) {
-                          showToast('无法打开文件夹选择器', 'error')
-                        }
-                      }}
-                      className="px-4 py-2.5 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-colors text-[10px] font-bold flex items-center gap-2 shadow-lg shadow-blue-200"
-                    >
-                      <FolderTree size={14} />
-                      <span>选择目录</span>
-                    </button>
-                  )}
-                </div>
-                <p className="mt-2 text-[9px] text-amber-500 font-medium">注意：更改后服务端将立即开始使用新目录存储文件</p>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+      <QRModal
+        isOpen={showQR}
+        onClose={() => setShowQR(false)}
+        config={config}
+        selectedQRip={selectedQRip}
+        onSelectIP={setSelectedQRip}
+      />
 
       <ToastContainer toasts={toasts} />
       <DebugConsole />
+      <SettingsModal
+        isOpen={showSettings}
+        onClose={() => setShowSettings(false)}
+        baseUrl={baseUrl}
+        clipboardSync={clipboardSync}
+        onToggleClipboardSync={toggleClipboardSync}
+        dataDir={dataDir}
+        isServerLocal={isServerLocal}
+        onUpdateDataDir={updateDataDir}
+        showToast={showToast}
+      />
       {previewMedia && (
         previewMedia.items ? (
           <GalleryPreview
