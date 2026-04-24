@@ -14,6 +14,7 @@ import {
   Check,
   MoreVertical,
   FolderOpen,
+  FolderDown,
 } from 'lucide-react'
 import { SharedItem, FileInfo } from '../types'
 import { Capacitor } from '@capacitor/core'
@@ -34,6 +35,8 @@ interface Props {
   onDelete: (id: number) => void
   onPreview: (url: string, type: 'image' | 'video', index?: number, items?: FileInfo[]) => void
   onSaveToAlbum?: (url: string, filename: string) => void
+  onSaveAllMedia?: (files: FileInfo[], baseUrl: string) => void
+  onSaveFileToLocal?: (url: string, filename: string) => void
   isMenuOpen: boolean
   onToggleMenu: (id: number | null, rect?: DOMRect) => void
   menuPos: { x: number; y: number } | null
@@ -105,7 +108,7 @@ const MediaGrid: React.FC<{
 }
 
 export const MessageItem: React.FC<Props> = React.memo(
-  ({ item, isMe, baseUrl, onDelete, onPreview, onSaveToAlbum, isMenuOpen, onToggleMenu, menuPos, style }) => {
+  ({ item, isMe, baseUrl, onDelete, onPreview, onSaveToAlbum, onSaveAllMedia, onSaveFileToLocal, isMenuOpen, onToggleMenu, menuPos, style }) => {
     const [copied, setCopied] = useState(false)
     const menuBtnRef = useRef<HTMLButtonElement>(null)
 
@@ -316,6 +319,32 @@ export const MessageItem: React.FC<Props> = React.memo(
                 className="w-full px-4 py-2 text-left text-sm hover:bg-blue-50 flex items-center gap-3 text-slate-700 transition-colors"
               >
                 <ImageIcon size={16} className="text-slate-400" />
+                <span className="font-medium">保存到相册</span>
+              </button>
+            )}
+
+            {item.type === 'file' && !isImg && !isVid && Capacitor.isNativePlatform() && (
+              <button
+                onClick={() => {
+                  onSaveFileToLocal?.(downloadUrl, item.originalName || 'file');
+                  onToggleMenu(null);
+                }}
+                className="w-full px-4 py-2 text-left text-sm hover:bg-blue-50 flex items-center gap-3 text-slate-700 transition-colors"
+              >
+                <FolderDown size={16} className="text-slate-400" />
+                <span className="font-medium">保存到本地</span>
+              </button>
+            )}
+
+            {item.type === 'gallery' && item.files && Capacitor.isNativePlatform() && (
+              <button
+                onClick={() => {
+                  onSaveAllMedia?.(item.files!, baseUrl);
+                  onToggleMenu(null);
+                }}
+                className="w-full px-4 py-2 text-left text-sm hover:bg-blue-50 flex items-center gap-3 text-slate-700 transition-colors"
+              >
+                <FolderDown size={16} className="text-slate-400" />
                 <span className="font-medium">保存到相册</span>
               </button>
             )}

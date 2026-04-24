@@ -15,7 +15,7 @@ import { useItems } from './hooks/useItems'
 import { useUpload } from './hooks/useUpload'
 import { useDiscovery } from './hooks/useDiscovery'
 import { requestNotificationPermission } from './utils/notifications'
-import { saveToAlbum } from './utils/media'
+import { saveToAlbum, saveFileToLocal, saveAllMediaFromGallery } from './utils/media'
 import { App as CapApp } from '@capacitor/app'
 import { Capacitor } from '@capacitor/core'
 import { StatusBar, Style } from '@capacitor/status-bar'
@@ -419,6 +419,8 @@ export default function App() {
                   setPreviewMedia({ url, type, index: idx, items: files })
                 }
                 onSaveToAlbum={(url, filename) => saveToAlbum(url, filename, showToast)}
+                onSaveAllMedia={(files, bu) => saveAllMediaFromGallery(files, bu, showToast)}
+                onSaveFileToLocal={(url, filename) => saveFileToLocal(url, filename, showToast)}
                 isMenuOpen={activeMenu?.id === item.id}
                 onToggleMenu={handleToggleMenu}
                 menuPos={
