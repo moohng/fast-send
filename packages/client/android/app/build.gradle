@@ -19,9 +19,9 @@ android {
     signingConfigs {
         release {
             storeFile file('fastsend-release.jks')
-            storePassword 'fastsend123'
-            keyAlias 'fastsend-key'
-            keyPassword 'fastsend123'
+            storePassword System.getenv("ANDROID_KEYSTORE_PASSWORD") ?: 'fastsend123'
+            keyAlias System.getenv("ANDROID_KEY_ALIAS") ?: 'fastsend-key'
+            keyPassword System.getenv("ANDROID_KEY_PASSWORD") ?: 'fastsend123'
         }
     }
     buildTypes {

@@ -18,7 +18,8 @@
     "build:apk": "cd packages/client && npx cap sync android && cd android && cmd /c gradlew assembleDebug && (if not exist ..\\..\\..\\out mkdir ..\\..\\..\\out) && copy /y app\\build\\outputs\\apk\\debug\\app-debug.apk ..\\..\\..\\out\\fast-send-debug.apk",
     "build:release-apk": "cd packages/client && npx cap sync android && cd android && cmd /c gradlew assembleRelease && (if not exist ..\\..\\..\\out mkdir ..\\..\\..\\out) && copy /y app\\build\\outputs\\apk\\release\\app-release.apk ..\\..\\..\\out\\fast-send-release.apk",
     "build:upx": "upx.exe --best ./out/fast-send-cli.exe ./out/fast-send.exe",
-    "build:all": "npm run build:client && npm run build:cli && npm run build:gui && npm run build:upx && npm run build:apk",
+    "build:all": "node scripts/sync-version.js && npm run build:client && npm run build:cli && npm run build:gui && npm run build:upx && npm run build:release-apk",
+    "release": "npm run build:all && echo '打包完成！请手动上传 out 目录下的文件到 GitHub Release。'",
     "check": "npm run check --workspaces",
     "format": "prettier --write ."
   },
