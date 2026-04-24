@@ -14,12 +14,10 @@
     "dev": "concurrently \"npm run client\" \"npm run server\"",
     "build:client": "npm run build --workspace=@fast-send/client && (if exist packages\\server-go\\dist (rmdir /s /q packages\\server-go\\dist)) && xcopy /e /i /y packages\\client\\dist packages\\server-go\\dist",
     "build:go": "node scripts/build-go.js",
-    "build:cli": "npm run build:go",
-    "build:gui": "npm run build:go",
     "build:apk": "cd packages/client && npx cap sync android && cd android && cmd /c gradlew assembleDebug && (if not exist ..\\..\\..\\out mkdir ..\\..\\..\\out) && copy /y app\\build\\outputs\\apk\\debug\\app-debug.apk ..\\..\\..\\out\\fast-send-debug.apk",
     "build:release-apk": "cd packages/client && npx cap sync android && cd android && cmd /c gradlew assembleRelease && (if not exist ..\\..\\..\\out mkdir ..\\..\\..\\out) && copy /y app\\build\\outputs\\apk\\release\\app-release.apk ..\\..\\..\\out\\fast-send-release.apk",
     "build:upx": "echo 'UPX disabled to avoid false virus alerts'",
-    "build:all": "node scripts/sync-version.js && npm run build:client && npm run build:cli && npm run build:gui && npm run build:upx && npm run build:release-apk",
+    "build:all": "node scripts/sync-version.js && npm run build:client && npm run build:go && npm run build:upx && npm run build:release-apk",
     "release": "npm run build:all && echo '打包完成！请手动上传 out 目录下的文件到 GitHub Release。'",
     "check": "npm run check --workspaces",
     "format": "prettier --write ."

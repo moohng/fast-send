@@ -6,6 +6,7 @@ import (
 	"fastsend/internal/config"
 	"fastsend/internal/db"
 	"fastsend/internal/discovery"
+	"fastsend/internal/tray"
 	"fastsend/internal/utils"
 	"fastsend/internal/ws"
 	"fmt"
@@ -14,10 +15,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/getlantern/systray"
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
-	"github.com/skratchdot/open-golang/open"
 )
 
 //go:embed all:dist
@@ -31,10 +30,8 @@ func main() {
 	// 启动网络服务
 	go runHTTPServer(hub, store)
 
-	fmt.Println("[Systray] Starting tray...")
-	systray.Run(func() {
-		onReady(hub, store)
-	}, onExit)
+	// 启动托盘逻辑（在非 CGO 平台将回退到信号监听）
+	tray.Run(hub, store)
 }
 
 func runHTTPServer(hub *ws.Hub, store *db.Store) {
@@ -102,29 +99,4 @@ func runHTTPServer(hub *ws.Hub, store *db.Store) {
 
 	fmt.Printf("FastSend Go Server 启动在 http://%s:5678\n", utils.GetLocalIP())
 	r.Run(":5678")
-}
-
-func onReady(hub *ws.Hub, store *db.Store) {
-	fmt.Println("[Systray] onReady...")
-	systray.SetIcon(config.IconData)
-	systray.SetTitle("FastSend")
-	systray.SetTooltip("FastSend")
-
-	mOpen := systray.AddMenuItem("打开主界面", "在浏览器中打开")
-	systray.AddSeparator()
-	mQuit := systray.AddMenuItem("退出", "关闭程序")
-
-	for {
-		select {
-		case <-mOpen.ClickedCh:
-			open.Run("http://localhost:5678")
-		case <-mQuit.ClickedCh:
-			systray.Quit()
-			return
-		}
-	}
-}
-
-func onExit() {
-	fmt.Println("[Systray] Exiting...")
 }

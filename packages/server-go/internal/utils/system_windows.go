@@ -1,3 +1,6 @@
+//go:build windows
+// +build windows
+
 package utils
 
 import (
@@ -6,11 +9,8 @@ import (
 	"syscall"
 )
 
-// SelectFolder 调用 PowerShell 打开文件夹选择对话框
+// SelectFolder 调用 PowerShell 打开文件夹选择对话框 (Windows 专用)
 func SelectFolder() (string, error) {
-	// 使用最稳健的脚本：
-	// 1. LoadWithPartialName 保证加载速度
-	// 2. 移除复杂的句柄绑定，避免因 MainWindowHandle 为 0 导致的错误
 	script := `
 	$assembly = [System.Reflection.Assembly]::LoadWithPartialName('System.Windows.Forms')
 	$f = New-Object System.Windows.Forms.FolderBrowserDialog
@@ -21,7 +21,6 @@ func SelectFolder() (string, error) {
 	}
 	`
 	cmd := exec.Command("powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", script)
-	// 仅隐藏 PowerShell 控制台窗口，不限制交互
 	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
 
 	output, err := cmd.Output()
