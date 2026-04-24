@@ -30,7 +30,8 @@ jobs:
       - name: Copy static files
         run: |
           if (Test-Path packages/server-go/dist) { Remove-Item -Recurse -Force packages/server-go/dist }
-          xcopy /e /i /y packages/client/dist packages/server-go/dist
+          New-Item -ItemType Directory -Force -Path packages/server-go/dist
+          Copy-Item -Path packages/client/dist/* -Destination packages/server-go/dist/ -Recurse -Force
 
       - name: Build Windows Exe
         working-directory: packages/server-go
@@ -73,6 +74,10 @@ jobs:
       - name: Build Frontend
         run: npm run build --workspace=@fast-send/client
 
+      - name: Capacitor Update
+        working-directory: packages/client
+        run: npx cap update android
+
       - name: Decode Keystore
         run: echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 -d > packages/client/android/app/fastsend-release.jks
 
@@ -102,11 +107,16 @@ jobs:
       - name: Download Windows Artifact
         uses: actions/upload-artifact@v4
         with:
+          name: unused-trigger
+          path: .
+        # 这里的下载逻辑在 actions/upload-artifact@v4 中不需要指定 path
+
+      - uses: actions/download-artifact@v4
+        with:
           name: FastSend-Windows
           path: out
 
-      - name: Download Android Artifact
-        uses: actions/upload-artifact@v4
+      - uses: actions/download-artifact@v4
         with:
           name: FastSend-Android
           path: out
