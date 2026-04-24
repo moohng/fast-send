@@ -8,7 +8,7 @@ export const useDiscovery = (
 ) => {
   const [isScanning, setIsScanning] = useState(false)
 
-  const scan = useCallback(async () => {
+  const scan = useCallback(async (silent: boolean = false) => {
     if (isScanning) return
     setIsScanning(true)
 
@@ -28,7 +28,9 @@ export const useDiscovery = (
               setBaseUrl(url)
               localStorage.setItem('fast_send_last_url', url)
               fetchData(url)
-              showToast('通过 mDNS 发现设备')
+              if (!silent) {
+                showToast('通过 mDNS 发现设备')
+              }
               zeroconf.stop()
               setIsScanning(false)
             }
@@ -58,11 +60,11 @@ export const useDiscovery = (
       fetch(`${lastUrl}/api/config`)
         .then((res) => {
           if (res.ok) fetchData(lastUrl)
-          else scan()
+          else scan(true)
         })
-        .catch(() => scan())
+        .catch(() => scan(true))
     } else {
-      scan()
+      scan(true)
     }
   }, [])
 

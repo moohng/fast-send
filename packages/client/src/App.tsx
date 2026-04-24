@@ -382,7 +382,7 @@ export default function App() {
               </button>
 
               {isMoreMenuOpen && (
-                <div className="absolute top-full right-0 mt-2 w-48 bg-white/90 backdrop-blur-xl border border-slate-200 shadow-2xl rounded-xl py-2 z-[100] animate-in fade-in zoom-in-95 duration-100 more-menu-container">
+                <div className="absolute top-full right-0 mt-2 w-48 bg-white backdrop-blur-xl border border-slate-200 shadow-2xl rounded-xl py-2 z-[100] animate-in fade-in zoom-in-95 duration-100 more-menu-container">
                   <button
                     onClick={() => { setIsMoreMenuOpen(false); scan(); }}
                     className="w-full px-4 py-2.5 text-left text-sm hover:bg-blue-50 flex items-center gap-3 text-slate-700 transition-colors"
