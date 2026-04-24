@@ -108,7 +108,7 @@ func onReady(hub *ws.Hub, store *db.Store) {
 	fmt.Println("[Systray] onReady...")
 	systray.SetIcon(config.IconData)
 	systray.SetTitle("FastSend")
-	systray.SetTooltip("FastSend 局域网同步工具")
+	systray.SetTooltip("FastSend")
 
 	mOpen := systray.AddMenuItem("打开主界面", "在浏览器中打开")
 	systray.AddSeparator()

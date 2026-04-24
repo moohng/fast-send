@@ -2,6 +2,8 @@ import React, { useState, useEffect } from 'react'
 import { X, Terminal } from 'lucide-react'
 
 export const DebugConsole = () => {
+  if (!import.meta.env.DEV) return null
+
   const [logs, setLogs] = useState<string[]>([])
   const [isOpen, setIsOpen] = useState(false)
 
