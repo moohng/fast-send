@@ -22,7 +22,12 @@ if (!fs.existsSync(outDir)) {
 
 const serverDir = path.resolve('packages/server-go');
 
-console.log('📦 Starting multi-platform Go build...');
+// Load version from package.json
+const rootPkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+const version = rootPkg.version;
+const namePrefix = `FastSend_v${version}`;
+
+console.log(`📦 Starting multi-platform Go build for v${version}...`);
 
 // 1. Prepare Windows resources (only if windows targets exist)
 if (targets.some(t => t.goos === 'windows')) {
@@ -48,7 +53,7 @@ for (const { goos, goarch, label, ext } of targets) {
 
   // CLI build
   try {
-    const cliOut = path.join(outDir, `fast-send-cli-${label}${ext}`);
+    const cliOut = path.join(outDir, `${namePrefix}_cli_${label}${ext}`);
     execSync(`go build -ldflags="${ldFlags.join(' ')}" -o "${cliOut}"`, {
       cwd: serverDir,
       env,
@@ -62,7 +67,7 @@ for (const { goos, goarch, label, ext } of targets) {
   // GUI build (Windows only features)
   if (goos === 'windows') {
     try {
-      const guiOut = path.join(outDir, `fast-send-${label}${ext}`);
+      const guiOut = path.join(outDir, `${namePrefix}_${label}${ext}`);
       const guiLdFlags = [...ldFlags, '-H windowsgui'];
       execSync(`go build -ldflags="${guiLdFlags.join(' ')}" -o "${guiOut}"`, {
         cwd: serverDir,

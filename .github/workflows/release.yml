@@ -9,7 +9,7 @@ permissions:
   contents: write
 
 jobs:
-  build-windows:
+  build-desktop:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -33,27 +33,18 @@ jobs:
         run: node scripts/sync-version.js ${{ github.ref_name }}
 
       - name: Build Frontend
-        run: npm run build --workspace=@fast-send/client
+        run: npm run build:client
 
-      - name: Copy static files
-        run: |
-          if (Test-Path packages/server-go/dist) { Remove-Item -Recurse -Force packages/server-go/dist }
-          New-Item -ItemType Directory -Force -Path packages/server-go/dist
-          Copy-Item -Path packages/client/dist/* -Destination packages/server-go/dist/ -Recurse -Force
-
-      - name: Build Windows Exe
-        working-directory: packages/server-go
+      - name: Build All Desktop Platforms
         run: |
           go install github.com/tc-hib/go-winres@latest
-          go-winres make
-          ls *.syso
-          go build -ldflags="-s -w -H windowsgui" -o ../../out/FastSend_${{ github.ref_name }}.exe main.go
+          npm run build:go
 
-      - name: Upload Windows Artifact
+      - name: Upload Desktop Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: FastSend-Windows
-          path: out/FastSend_${{ github.ref_name }}.exe
+          name: FastSend-Desktop
+          path: out/FastSend_v*
 
   build-android:
     runs-on: ubuntu-latest
@@ -89,7 +80,6 @@ jobs:
       - name: Decode Keystore
         run: |
           printf "%s" "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 -d > packages/client/android/app/fastsend-release.jks
-          ls -l packages/client/android/app/fastsend-release.jks
 
       - name: Build Android APK
         working-directory: packages/client/android
@@ -101,40 +91,39 @@ jobs:
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
 
-      - name: Rename APK
+      - name: Rename and Move APK
         run: |
           mkdir -p out
-          cp packages/client/android/app/build/outputs/apk/release/app-arm64-v8a-release.apk out/FastSend_${{ github.ref_name }}_arm64.apk
-          cp packages/client/android/app/build/outputs/apk/release/app-armeabi-v7a-release.apk out/FastSend_${{ github.ref_name }}_armv7.apk
+          cp packages/client/android/app/build/outputs/apk/release/app-arm64-v8a-release.apk out/FastSend_${{ github.ref_name }}_android_arm64.apk
+          cp packages/client/android/app/build/outputs/apk/release/app-armeabi-v7a-release.apk out/FastSend_${{ github.ref_name }}_android_armv7.apk
 
       - name: Upload Android Artifact
         uses: actions/upload-artifact@v4
         with:
           name: FastSend-Android
-          path: out/FastSend_${{ github.ref_name }}_*.apk
+          path: out/FastSend_${{ github.ref_name }}_android_*.apk
 
   create-release:
-    needs: [build-windows, build-android]
+    needs: [build-desktop, build-android]
     runs-on: ubuntu-latest
     steps:
-      - name: Download Windows Artifact
+      - name: Download All Artifacts
         uses: actions/download-artifact@v4
         with:
-          name: FastSend-Windows
-          path: out
+          path: all-artifacts
 
-      - name: Download Android Artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: FastSend-Android
-          path: out
+      - name: Flatten and Prepare Files
+        run: |
+          mkdir -p out
+          find all-artifacts -type f -exec cp {} out/ \;
+          ls -R out
 
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            out/*.exe
-            out/*.apk
+            out/FastSend_v*
+            out/FastSend_v*.apk
           name: Release ${{ github.ref_name }}
           draft: false
           prerelease: false
