@@ -4,29 +4,35 @@
 package utils
 
 import (
-	"os/exec"
-	"strings"
 	"syscall"
+
+	"github.com/ncruces/zenity"
 )
 
-// SelectFolder 调用 PowerShell 打开文件夹选择对话框 (Windows 专用)
-func SelectFolder() (string, error) {
-	script := `
-	$assembly = [System.Reflection.Assembly]::LoadWithPartialName('System.Windows.Forms')
-	$f = New-Object System.Windows.Forms.FolderBrowserDialog
-	$f.Description = "选择 FastSend 数据存储目录"
-	$f.ShowNewFolderButton = $true
-	if ($f.ShowDialog() -eq "OK") {
-		Write-Host $f.SelectedPath
-	}
-	`
-	cmd := exec.Command("powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", script)
-	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
+var (
+	user32               = syscall.NewLazyDLL("user32.dll")
+	getForegroundWindow = user32.NewProc("GetForegroundWindow")
+)
 
-	output, err := cmd.Output()
+// SelectFolder 使用原生 Windows API 打开文件夹选择对话框 (Windows 专用)
+func SelectFolder() (string, error) {
+	title := "选择 FastSend 数据存储目录"
+
+	// 获取当前活动窗口（即浏览器）的句柄
+	// 将其作为父窗口锚定，可以百分之百确保弹窗出现在浏览器上方
+	hwnd, _, _ := getForegroundWindow.Call()
+
+	path, err := zenity.SelectFile(
+		zenity.Directory(),
+		zenity.Title(title),
+		zenity.Attach(hwnd),
+	)
+
 	if err != nil {
+		if err == zenity.ErrCanceled {
+			return "", nil
+		}
 		return "", err
 	}
-
-	return strings.TrimSpace(string(output)), nil
+	return path, nil
 }
