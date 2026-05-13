@@ -33,7 +33,15 @@ const CLIENT_ID = (() => {
 const isMobile = Capacitor.getPlatform() !== 'web'
 
 export default function App() {
-  const [baseUrl, setBaseUrl] = useState(localStorage.getItem('fast_send_last_url') || `http://${window.location.hostname}:5678`)
+  const [baseUrl, setBaseUrl] = useState(() => {
+    const lastUrl = localStorage.getItem('fast_send_last_url')
+    const currentUrl = `http://${window.location.hostname}:5678`
+    // 在浏览器环境下，如果当前域名有效，优先使用当前域名
+    if (!isMobile && window.location.hostname) {
+      return currentUrl
+    }
+    return lastUrl || currentUrl
+  })
   const [config, setConfig] = useState<ServerConfig | null>(null)
   const [inputText, setInputText] = useState('')
   const [showQR, setShowQR] = useState(false)
