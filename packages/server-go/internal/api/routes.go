@@ -58,6 +58,10 @@ func SetupRoutes(r *gin.Engine, hub *ws.Hub, store *db.Store) {
 
 		api.GET("/settings", func(c *gin.Context) {
 			key := c.Query("key")
+			if key == "baseDir" {
+				c.JSON(200, gin.H{"value": config.BaseDir})
+				return
+			}
 			value := store.GetSetting(key)
 			c.JSON(200, gin.H{"value": value})
 		})
@@ -77,6 +81,7 @@ func SetupRoutes(r *gin.Engine, hub *ws.Hub, store *db.Store) {
 			}
 			if input.Key == "baseDir" {
 				config.UpdateDirs(input.Value)
+				store.Reinit(input.Value)
 			}
 			c.JSON(200, gin.H{"success": true})
 		})

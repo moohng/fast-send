@@ -29,6 +29,7 @@ func main() {
 	// 从数据库恢复上次设置的目录
 	if savedBaseDir := store.GetSetting("baseDir"); savedBaseDir != "" {
 		config.UpdateDirs(savedBaseDir)
+		store.Reinit(savedBaseDir)
 	}
 	
 	hub := ws.NewHub()

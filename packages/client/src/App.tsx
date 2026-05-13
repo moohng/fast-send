@@ -191,7 +191,10 @@ export default function App() {
         body: JSON.stringify({ key: 'baseDir', value: newDir }),
       })
       setDataDir(newDir)
-      showToast('存储目录已更新', 'success')
+      showToast('存储目录已更新，正在刷新...', 'success')
+      setTimeout(() => {
+        window.location.reload()
+      }, 1000)
     } catch (e) {
       showToast('更新失败', 'error')
     }

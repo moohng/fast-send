@@ -131,6 +131,64 @@ func (s *Store) SetSetting(key, value string) error {
 	return err
 }
 
+func (s *Store) Reinit(newBaseDir string) error {
+	dbPath := filepath.Join(newBaseDir, "fast-send.db")
+	db, err := sql.Open("sqlite", dbPath)
+	if err != nil {
+		return err
+	}
+
+	_, err = db.Exec(`
+			CREATE TABLE IF NOT EXISTS items (
+				id INTEGER PRIMARY KEY,
+				type TEXT NOT NULL,
+				content TEXT,
+				filename TEXT,
+				originalName TEXT,
+				files TEXT,
+				size TEXT,
+				time TEXT NOT NULL,
+				fullTime TEXT NOT NULL,
+				senderId TEXT NOT NULL
+			);
+			CREATE TABLE IF NOT EXISTS settings (
+				key TEXT PRIMARY KEY,
+				value TEXT
+			);
+		`)
+	if err != nil {
+		db.Close()
+		return err
+	}
+
+	// 检查并添加缺失的列
+	rows, err := db.Query("PRAGMA table_info(items)")
+	if err == nil {
+		hasFiles := false
+		for rows.Next() {
+			var cid int
+			var name, ctype string
+			var notnull, pk int
+			var dflt_value interface{}
+			rows.Scan(&cid, &name, &ctype, &notnull, &dflt_value, &pk)
+			if name == "files" {
+				hasFiles = true
+			}
+		}
+		rows.Close()
+		if !hasFiles {
+			db.Exec("ALTER TABLE items ADD COLUMN files TEXT")
+		}
+	}
+
+	oldDB := s.db
+	s.db = db
+	if oldDB != nil {
+		oldDB.Close()
+	}
+	return nil
+}
+
 func (s *Store) Raw() *sql.DB {
 	return s.db
 }
