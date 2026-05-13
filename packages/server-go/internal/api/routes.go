@@ -82,6 +82,7 @@ func SetupRoutes(r *gin.Engine, hub *ws.Hub, store *db.Store) {
 			if input.Key == "baseDir" {
 				config.UpdateDirs(input.Value)
 				store.Reinit(input.Value)
+				hub.Broadcast("refresh-data", nil)
 			}
 			c.JSON(200, gin.H{"success": true})
 		})

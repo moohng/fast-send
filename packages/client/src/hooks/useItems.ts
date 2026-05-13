@@ -121,10 +121,17 @@ export const useItems = (
       setItems([])
     })
 
+    socket.on('refresh-data', () => {
+      // fetchData()
+      window.location.reload()
+      // showToast('数据存储已切换，内容已刷新', 'info')
+    })
+
     return () => {
       socket.off('new-item')
       socket.off('item-removed')
       socket.off('items-cleared')
+      socket.off('refresh-data')
     }
   }, [socket, clientId, showToast])
 
