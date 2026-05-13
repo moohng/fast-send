@@ -49,7 +49,7 @@
 ### 方案 B：源码编译
 ```bash
 # 克隆仓库
-git clone https://github.com/your-username/fast-send.git
+git clone https://github.com/moohng/fast-send.git
 cd fast-send
 
 # 安装依赖
@@ -63,11 +63,15 @@ npm run build:all
 
 ## 📸 界面预览
 
-*(此处建议插入项目截图)*
-
-- **主界面**：瀑布流展示传输记录，支持拖拽上传。
-- **移动端**：扫码快速连接，原生分享插件集成。
-- **设置面板**：自定义下载路径，开启剪贴板同步。
+<div align="center">
+  <div style="display: inline-flex; gap: 10px;">
+    <img src="./design/screenshot/main.webp" width="300" alt="主界面" />
+    <img src="./design/screenshot/qrcode.webp" width="300" alt="扫码连接" />
+    <img src="./design/screenshot/settings.webp" width="300" alt="设置面板" />
+  </div>
+  <br/>
+  <i>主界面 & 扫码快速连接 & 深度自定义设置</i>
+</div>
 
 ---
 
@@ -94,7 +98,7 @@ npm run build:all
 如果您喜欢这个项目，或者想了解更多关于前端开发、跨端技术以及效率工具的分享，欢迎关注我的个人公众号：
 
 <div align="center">
-  <img src="https://img.shields.io/badge/公众号-前端星河-blue?style=for-the-badge&logo=wechat" />
+  <img src="https://img.jimukit.com/common/xinghefe_1.webp" />
   <br/>
   <b>扫码或搜索“前端星河”，一起探索前端技术的浩瀚星空。</b>
 </div>
