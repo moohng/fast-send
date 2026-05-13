@@ -64,13 +64,13 @@ npm run build:all
 ## 📸 界面预览
 
 <div align="center">
-  <div style="display: inline-flex; gap: 10px;">
-    <img src="./design/screenshot/main.webp" width="300" alt="主界面" />
-    <img src="./design/screenshot/qrcode.webp" width="300" alt="扫码连接" />
-    <img src="./design/screenshot/settings.webp" width="300" alt="设置面板" />
-  </div>
-  <br/>
-  <i>主界面 & 扫码快速连接 & 深度自定义设置</i>
+  <table>
+    <tr>
+      <td align="center"><img src="./design/screenshot/main.webp" width="280" /><br/><sub>主界面</sub></td>
+      <td align="center"><img src="./design/screenshot/qrcode.webp" width="280" /><br/><sub>扫码连接</sub></td>
+      <td align="center"><img src="./design/screenshot/settings.webp" width="280" /><br/><sub>设置面板</sub></td>
+    </tr>
+  </table>
 </div>
 
 ---
