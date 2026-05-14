@@ -42,14 +42,14 @@
 ## 🚀 快速开始
 
 ### 方案 A：直接运行（推荐）
-1. 从 [Releases](https://github.com/your-username/fast-send/releases) 页面下载对应系统的压缩包。
+1. 从 [Releases](https://github.com/xinghefe/fast-send/releases) 页面下载对应系统的压缩包。
 2. 解压并运行 `fast-send.exe` (Windows)。
 3. 在系统托盘找到图标，点击 **“打开主界面”** 即可开始使用。
 
 ### 方案 B：源码编译
 ```bash
 # 克隆仓库
-git clone https://github.com/moohng/fast-send.git
+git clone https://github.com/xinghefe/fast-send.git
 cd fast-send
 
 # 安装依赖
